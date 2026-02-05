@@ -557,6 +557,12 @@ body {
   color: var(--ink-soft);
 }
 
+.tour-stepper .chip-btn:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .loading-overlay {
   position: absolute;
   inset: 0;

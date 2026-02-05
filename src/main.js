@@ -3,6 +3,9 @@ import { artifacts, artifactMap, categories } from "./data/artifacts.js";
 import { createAnalyticsTracker } from "./analytics.js";
 import { ArtifactViewer } from "./viewer.js";
 
+const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
+const TOUR_AUTOPLAY_DELAY_MS = 4600;
+
 const elements = {
   stage: document.getElementById("stage"),
   canvas: document.getElementById("viewport"),
@@ -39,6 +42,7 @@ const elements = {
   tourStepper: document.getElementById("tourStepper"),
   prevStepBtn: document.getElementById("prevStepBtn"),
   nextStepBtn: document.getElementById("nextStepBtn"),
+  tourAutoBtn: document.getElementById("tourAutoBtn"),
   tourProgress: document.getElementById("tourProgress"),
   resetBtn: document.getElementById("resetBtn"),
   hotspotToggleBtn: document.getElementById("hotspotToggleBtn"),
@@ -77,6 +81,9 @@ const state = {
   compareLoading: false,
   isRestoringState: false,
   searchTrackTimer: null,
+  tourAutoPlay: parsedUrlState.tourAutoPlay,
+  tourAutoPlayTimer: null,
+  sessionProgress: loadSessionProgress(),
   previousTourState: {
     active: false,
     index: null
@@ -132,6 +139,11 @@ const primaryViewer = new ArtifactViewer({
       renderHotspotList();
       updateHeaderControls();
       scheduleUrlUpdate();
+      saveProgressForCurrentArtifact();
+
+      if (state.tourActive && state.tourAutoPlay) {
+        scheduleTourAutoplay();
+      }
 
       if (previousHotspotId !== hotspot.id) {
         trackEvent("hotspot_opened", {
@@ -186,10 +198,17 @@ const primaryViewer = new ArtifactViewer({
         });
       }
 
+      if (active && state.tourAutoPlay) {
+        scheduleTourAutoplay();
+      } else {
+        clearTourAutoplay();
+      }
+
       state.previousTourState = {
         active,
         index
       };
+      saveProgressForCurrentArtifact();
     },
     onHotspotVisibilityChange: () => {
       updateHeaderControls();
@@ -272,6 +291,7 @@ async function bootstrap(artifactId) {
 
 function bindEvents() {
   window.addEventListener("resize", handleResize);
+  document.addEventListener("keydown", handleKeydown);
 
   elements.searchInput.addEventListener("input", () => {
     state.searchQuery = elements.searchInput.value.trim();
@@ -368,6 +388,9 @@ function bindEvents() {
 
   elements.prevStepBtn.addEventListener("click", () => primaryViewer.previousTourStep());
   elements.nextStepBtn.addEventListener("click", () => primaryViewer.nextTourStep());
+  elements.tourAutoBtn.addEventListener("click", () => {
+    setTourAutoplay(!state.tourAutoPlay, { source: "ui" });
+  });
 
   elements.fullscreenBtn.addEventListener("click", async () => {
     if (!document.fullscreenElement) {
@@ -439,6 +462,8 @@ async function loadArtifact(artifactId, options = {}) {
   state.currentArtifactId = artifactId;
   state.selectedHotspot = null;
   state.tourActive = false;
+  state.previousTourState = { active: false, index: null };
+  clearTourAutoplay();
 
   renderGallery();
   renderCompareList();
@@ -466,7 +491,8 @@ async function loadArtifact(artifactId, options = {}) {
         compareEnabled: state.compareEnabled,
         compareSync: state.compareSync,
         searchQuery: state.searchQuery,
-        detailView: state.activeDetailView
+        detailView: state.activeDetailView,
+        tourAutoPlay: state.tourAutoPlay
       };
     } else {
       const first = state.hotspotData[0];
@@ -549,21 +575,45 @@ function ensureValidCompareArtifact() {
 }
 
 function restoreFromUrlState() {
-  const { hotspotId, tourStep, cameraPose, detailView } = state.pendingState;
+  const {
+    hotspotId,
+    tourStep,
+    cameraPose,
+    detailView,
+    tourAutoPlay,
+    viewSpecified,
+    hotspotSpecified,
+    tourSpecified,
+    autoplaySpecified
+  } = state.pendingState;
+  const artifactProgress = state.sessionProgress?.[state.currentArtifactId] ?? null;
 
-  setDetailView(detailView, { skipUrlUpdate: true });
+  const initialDetailView = viewSpecified ? detailView : artifactProgress?.detailView ?? detailView;
+  const initialAutoplay = autoplaySpecified ? tourAutoPlay : artifactProgress?.tourAutoPlay ?? tourAutoPlay;
+  setDetailView(initialDetailView, { skipUrlUpdate: true });
+  setTourAutoplay(initialAutoplay, { skipUrlUpdate: true, skipTrack: true, source: "restore" });
 
   if (cameraPose) {
     primaryViewer.applyCameraPose(cameraPose);
   }
 
-  if (Number.isInteger(tourStep)) {
+  if (tourSpecified && Number.isInteger(tourStep)) {
     primaryViewer.startTour(tourStep);
     return;
   }
 
-  if (hotspotId) {
+  if (hotspotSpecified && hotspotId) {
     primaryViewer.selectHotspot(hotspotId, { focus: true });
+    return;
+  }
+
+  if (artifactProgress?.tourActive && Number.isInteger(artifactProgress.tourIndex)) {
+    primaryViewer.startTour(artifactProgress.tourIndex);
+    return;
+  }
+
+  if (artifactProgress?.hotspotId) {
+    primaryViewer.selectHotspot(artifactProgress.hotspotId, { focus: false });
     return;
   }
 
@@ -596,6 +646,8 @@ function setDetailView(view, options = {}) {
       view: normalizedView
     });
   }
+
+  saveProgressForCurrentArtifact();
 
   if (!options.skipUrlUpdate) {
     scheduleUrlUpdate();
@@ -807,12 +859,72 @@ function renderHotspotCard() {
   elements.tourProgress.textContent = `${state.tourIndex + 1}/${state.tourTotal}`;
 }
 
+function updateTourAutoplayUI() {
+  elements.tourAutoBtn.textContent = state.tourAutoPlay ? "Auto On" : "Auto Off";
+  elements.tourAutoBtn.classList.toggle("is-active", state.tourAutoPlay);
+  elements.tourAutoBtn.disabled = !state.tourActive;
+}
+
+function setTourAutoplay(enabled, options = {}) {
+  state.tourAutoPlay = Boolean(enabled);
+  updateTourAutoplayUI();
+  saveProgressForCurrentArtifact();
+
+  if (state.tourAutoPlay && state.tourActive) {
+    scheduleTourAutoplay();
+  } else {
+    clearTourAutoplay();
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("tour_autoplay_toggled", {
+      enabled: state.tourAutoPlay,
+      source: options.source ?? "unknown"
+    });
+  }
+
+  if (!options.skipUrlUpdate) {
+    scheduleUrlUpdate();
+  }
+}
+
+function clearTourAutoplay() {
+  if (!state.tourAutoPlayTimer) {
+    return;
+  }
+  window.clearTimeout(state.tourAutoPlayTimer);
+  state.tourAutoPlayTimer = null;
+}
+
+function scheduleTourAutoplay() {
+  clearTourAutoplay();
+
+  if (!state.tourAutoPlay || !state.tourActive || state.tourTotal < 2) {
+    return;
+  }
+
+  state.tourAutoPlayTimer = window.setTimeout(() => {
+    const wasLastStep = state.tourIndex === state.tourTotal - 1;
+    primaryViewer.nextTourStep();
+
+    if (wasLastStep) {
+      trackEvent("tour_loop_completed", {
+        artifactId: state.currentArtifactId,
+        totalSteps: state.tourTotal
+      });
+    }
+
+    scheduleTourAutoplay();
+  }, TOUR_AUTOPLAY_DELAY_MS);
+}
+
 function updateHeaderControls() {
   elements.tourBtn.textContent = state.tourActive ? "Exit Tour" : "Start Tour";
   elements.hotspotToggleBtn.textContent = primaryViewer.hotspotsEnabled ? "Hide Hotspots" : "Show Hotspots";
   elements.compareBtn.textContent = state.compareEnabled ? "Exit Compare" : "Compare";
   elements.syncBtn.hidden = !state.compareEnabled;
   elements.syncBtn.textContent = state.compareSync ? "Sync On" : "Sync Off";
+  updateTourAutoplayUI();
 }
 
 function setCompareModeUI(enabled) {
@@ -856,6 +968,87 @@ function handleViewerCameraChange(source) {
   state.cameraSyncLock = false;
 }
 
+function handleKeydown(event) {
+  const target = event.target;
+  const isTypingTarget =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    (target instanceof HTMLElement && target.isContentEditable);
+
+  if (isTypingTarget) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+
+  if (key === "h") {
+    event.preventDefault();
+    primaryViewer.toggleHotspots();
+    trackEvent("keyboard_shortcut_used", { key: "h", action: "toggle_hotspots" });
+    return;
+  }
+
+  if (key === "t") {
+    event.preventDefault();
+    elements.tourBtn.click();
+    trackEvent("keyboard_shortcut_used", { key: "t", action: "toggle_tour" });
+    return;
+  }
+
+  if (key === "c") {
+    event.preventDefault();
+    elements.compareBtn.click();
+    trackEvent("keyboard_shortcut_used", { key: "c", action: "toggle_compare" });
+    return;
+  }
+
+  if (key === "s") {
+    event.preventDefault();
+    const nextView = state.activeDetailView === "story" ? "hotspots" : "story";
+    setDetailView(nextView);
+    trackEvent("keyboard_shortcut_used", { key: "s", action: "toggle_story" });
+    return;
+  }
+
+  if (key === "a" && state.tourActive) {
+    event.preventDefault();
+    setTourAutoplay(!state.tourAutoPlay, { source: "keyboard" });
+    trackEvent("keyboard_shortcut_used", { key: "a", action: "toggle_tour_autoplay" });
+    return;
+  }
+
+  if (event.key === "ArrowRight" && state.tourActive) {
+    event.preventDefault();
+    primaryViewer.nextTourStep();
+    trackEvent("keyboard_shortcut_used", { key: "ArrowRight", action: "tour_next" });
+    return;
+  }
+
+  if (event.key === "ArrowLeft" && state.tourActive) {
+    event.preventDefault();
+    primaryViewer.previousTourStep();
+    trackEvent("keyboard_shortcut_used", { key: "ArrowLeft", action: "tour_previous" });
+  }
+}
+
+function saveProgressForCurrentArtifact() {
+  if (!state.currentArtifactId) {
+    return;
+  }
+
+  state.sessionProgress[state.currentArtifactId] = {
+    hotspotId: state.selectedHotspot?.id ?? null,
+    tourActive: state.tourActive,
+    tourIndex: state.tourActive ? state.tourIndex : null,
+    detailView: state.activeDetailView,
+    tourAutoPlay: state.tourAutoPlay,
+    updatedAt: Date.now()
+  };
+
+  persistSessionProgress(state.sessionProgress);
+}
+
 function showToast(message) {
   elements.toast.hidden = false;
   elements.toast.textContent = message;
@@ -894,6 +1087,10 @@ function updateUrlState() {
 
   if (state.tourActive) {
     params.set("tour", String(state.tourIndex));
+  }
+
+  if (state.tourAutoPlay) {
+    params.set("autoplay", "1");
   }
 
   if (state.activeDetailView === "story") {
@@ -949,6 +1146,7 @@ function parseUrlState() {
   const cameraPose = parseCameraPose(params.get("cam"));
   const compareArtifactId = params.get("compare");
   const detailView = params.get("view") === "story" ? "story" : "hotspots";
+  const tourAutoPlay = params.get("autoplay") === "1";
 
   return {
     artifactId,
@@ -959,7 +1157,12 @@ function parseUrlState() {
     compareEnabled: Boolean(compareArtifactId && artifactMap.has(compareArtifactId)),
     compareSync: params.get("sync") !== "0",
     searchQuery: params.get("q")?.trim() ?? "",
-    detailView
+    detailView,
+    tourAutoPlay,
+    viewSpecified: params.has("view"),
+    hotspotSpecified: params.has("hotspot"),
+    tourSpecified: params.has("tour"),
+    autoplaySpecified: params.has("autoplay")
   };
 }
 
@@ -973,6 +1176,32 @@ function getInitialCompareArtifactId(parsedCompareArtifactId) {
   }
 
   return artifacts[0]?.id ?? null;
+}
+
+function loadSessionProgress() {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_PROGRESS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function persistSessionProgress(progress) {
+  try {
+    window.sessionStorage.setItem(SESSION_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // Ignore storage quota and availability failures.
+  }
 }
 
 function getVisibleArtifacts() {
