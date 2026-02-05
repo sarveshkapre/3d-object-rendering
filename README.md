@@ -17,6 +17,7 @@ Minimalist white-space 3D artifact experience with:
 - Keyboard shortcuts (`T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, arrows for tour steps)
 - Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
+- In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 
 ## Run
 
@@ -65,6 +66,12 @@ The API runs with frontend in `npm run dev`.
 - CMS overrides read: `GET /api/cms/overrides`
 - CMS overrides write: `PUT /api/cms/overrides/:artifactId`
 - CMS overrides delete: `DELETE /api/cms/overrides/:artifactId`
+
+Curator editor supports:
+
+- Artifact metadata (`title`, `hook`, `keywords`, `releaseYear`, `featuredRank`)
+- Story content (`title`, `summary`, `body`, `references`)
+- Hotspot copy (`label`, `title`, `body`, `reference`) keyed by hotspot id
 
 Local persistent file:
 

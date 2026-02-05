@@ -54,6 +54,26 @@ const elements = {
   tourBtn: document.getElementById("tourBtn"),
   compareBtn: document.getElementById("compareBtn"),
   syncBtn: document.getElementById("syncBtn"),
+  curatorBtn: document.getElementById("curatorBtn"),
+  curatorModal: document.getElementById("curatorModal"),
+  curatorForm: document.getElementById("curatorForm"),
+  curatorCloseBtn: document.getElementById("curatorCloseBtn"),
+  curatorArtifactSelect: document.getElementById("curatorArtifactSelect"),
+  curatorTokenInput: document.getElementById("curatorTokenInput"),
+  curatorTitleInput: document.getElementById("curatorTitleInput"),
+  curatorHookInput: document.getElementById("curatorHookInput"),
+  curatorKeywordsInput: document.getElementById("curatorKeywordsInput"),
+  curatorYearInput: document.getElementById("curatorYearInput"),
+  curatorRankInput: document.getElementById("curatorRankInput"),
+  curatorStoryTitleInput: document.getElementById("curatorStoryTitleInput"),
+  curatorStorySummaryInput: document.getElementById("curatorStorySummaryInput"),
+  curatorStoryBodyInput: document.getElementById("curatorStoryBodyInput"),
+  curatorStoryReferencesInput: document.getElementById("curatorStoryReferencesInput"),
+  curatorHotspotsList: document.getElementById("curatorHotspotsList"),
+  curatorResetBtn: document.getElementById("curatorResetBtn"),
+  curatorDeleteBtn: document.getElementById("curatorDeleteBtn"),
+  curatorSaveBtn: document.getElementById("curatorSaveBtn"),
+  curatorStatus: document.getElementById("curatorStatus"),
   shortcutsBtn: document.getElementById("shortcutsBtn"),
   shortcutsModal: document.getElementById("shortcutsModal"),
   shortcutsCloseBtn: document.getElementById("shortcutsCloseBtn"),
@@ -65,6 +85,7 @@ const elements = {
 };
 
 const parsedUrlState = parseUrlState();
+const baseArtifactsById = Object.fromEntries(artifacts.map((artifact) => [artifact.id, structuredClone(artifact)]));
 
 const state = {
   currentCategory: "all",
@@ -95,6 +116,11 @@ const state = {
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
   serverMetrics: {},
+  cmsOverrides: {},
+  curatorOpen: false,
+  curatorArtifactId: null,
+  curatorToken: "",
+  curatorWorkingHotspots: [],
   shortcutsOpen: false,
   previousTourState: {
     active: false,
@@ -120,6 +146,13 @@ const primaryViewer = new ArtifactViewer({
       elements.artifactTitle.textContent = artifact.title;
       elements.artifactHook.textContent = artifact.hook;
       state.selectedHotspot = null;
+      if (!state.curatorArtifactId) {
+        state.curatorArtifactId = artifact.id;
+      }
+      renderCuratorArtifactOptions();
+      if (state.curatorOpen && state.curatorArtifactId === artifact.id) {
+        populateCuratorForm(artifact.id);
+      }
       renderStoryPanel();
       renderHotspotList();
       renderGallery();
@@ -267,6 +300,8 @@ initialize();
 function initialize() {
   elements.searchInput.value = state.searchQuery;
   elements.sortSelect.value = state.sortMode;
+  state.curatorArtifactId = parsedUrlState.artifactId && artifactMap.has(parsedUrlState.artifactId) ? parsedUrlState.artifactId : artifacts[0]?.id ?? null;
+  renderCuratorArtifactOptions();
 
   trackEvent("session_started", {
     sessionId: analytics.getSessionId(),
@@ -406,6 +441,43 @@ function bindEvents() {
     });
   });
 
+  elements.curatorBtn.addEventListener("click", () => {
+    setCuratorOpen(!state.curatorOpen, { source: "ui" });
+  });
+
+  elements.curatorCloseBtn.addEventListener("click", () => {
+    setCuratorOpen(false, { source: "ui" });
+  });
+
+  elements.curatorModal.addEventListener("click", (event) => {
+    if (event.target === elements.curatorModal) {
+      setCuratorOpen(false, { source: "overlay" });
+    }
+  });
+
+  elements.curatorArtifactSelect.addEventListener("change", () => {
+    state.curatorArtifactId = elements.curatorArtifactSelect.value;
+    populateCuratorForm(state.curatorArtifactId);
+  });
+
+  elements.curatorTokenInput.addEventListener("input", () => {
+    state.curatorToken = elements.curatorTokenInput.value;
+  });
+
+  elements.curatorResetBtn.addEventListener("click", () => {
+    populateCuratorForm(state.curatorArtifactId);
+    setCuratorStatus("Reset to current artifact content.", "success");
+  });
+
+  elements.curatorDeleteBtn.addEventListener("click", async () => {
+    await deleteCuratorOverride(state.curatorArtifactId);
+  });
+
+  elements.curatorForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await saveCuratorOverride(state.curatorArtifactId);
+  });
+
   elements.shortcutsBtn.addEventListener("click", () => {
     setShortcutsOpen(!state.shortcutsOpen, { source: "ui" });
   });
@@ -518,6 +590,9 @@ async function loadArtifact(artifactId, options = {}) {
       durationMs: Math.round(performance.now() - loadStartedAt)
     });
     renderStoryPanel();
+    if (state.curatorOpen && state.curatorArtifactId === artifactId) {
+      populateCuratorForm(artifactId);
+    }
 
     if (options.restoreFromUrl) {
       state.isRestoringState = true;
@@ -572,7 +647,8 @@ async function loadServerData() {
 
   if (overridesResult.status === "fulfilled" && overridesResult.value.ok) {
     const payload = await overridesResult.value.json();
-    applyOverrides(payload.overrides ?? {});
+    state.cmsOverrides = payload.overrides ?? {};
+    applyOverrides(state.cmsOverrides);
   }
 
   if (countersResult.status === "fulfilled" && countersResult.value.ok) {
@@ -580,12 +656,18 @@ async function loadServerData() {
     state.serverMetrics = payload.artifacts ?? {};
   }
 
+  renderCuratorArtifactOptions();
   renderGallery();
   renderInsightsPanel();
 }
 
 function applyOverrides(overrides) {
   for (const artifact of artifacts) {
+    const base = baseArtifactsById[artifact.id];
+    if (base) {
+      Object.assign(artifact, structuredClone(base));
+    }
+
     const override = overrides[artifact.id];
     if (!override || typeof override !== "object") {
       continue;
@@ -616,6 +698,17 @@ function applyOverrides(overrides) {
         ...artifact.story,
         ...override.story
       };
+    }
+
+    if (Array.isArray(override.hotspots)) {
+      const byId = new Map((artifact.hotspots ?? []).map((hotspot) => [hotspot.id, hotspot]));
+      artifact.hotspots = override.hotspots.map((hotspot) => {
+        const source = byId.get(hotspot.id) ?? {};
+        return {
+          ...source,
+          ...hotspot
+        };
+      });
     }
   }
 }
@@ -759,11 +852,301 @@ function updateDetailToggleUI() {
   elements.storyToggleBtn.classList.toggle("is-active", !inHotspotView);
 }
 
+function renderCuratorArtifactOptions() {
+  const optionsMarkup = artifacts
+    .map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(artifact.title)}</option>`)
+    .join("");
+
+  elements.curatorArtifactSelect.innerHTML = optionsMarkup;
+
+  if (state.curatorArtifactId && artifactMap.has(state.curatorArtifactId)) {
+    elements.curatorArtifactSelect.value = state.curatorArtifactId;
+  } else if (artifacts[0]) {
+    state.curatorArtifactId = artifacts[0].id;
+    elements.curatorArtifactSelect.value = artifacts[0].id;
+  }
+}
+
+function setCuratorOpen(open, options = {}) {
+  state.curatorOpen = Boolean(open);
+  elements.curatorModal.hidden = !state.curatorOpen;
+
+  if (state.curatorOpen) {
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { skipTrack: true });
+    }
+    if (!state.curatorArtifactId) {
+      state.curatorArtifactId = state.currentArtifactId ?? artifacts[0]?.id ?? null;
+    }
+    renderCuratorArtifactOptions();
+    populateCuratorForm(state.curatorArtifactId);
+    elements.curatorArtifactSelect.focus();
+  } else {
+    elements.curatorBtn.focus();
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("curator_overlay_toggled", {
+      open: state.curatorOpen,
+      source: options.source ?? "unknown"
+    });
+  }
+}
+
+function setCuratorStatus(message, tone = "neutral") {
+  elements.curatorStatus.textContent = message;
+  elements.curatorStatus.classList.toggle("is-error", tone === "error");
+  elements.curatorStatus.classList.toggle("is-success", tone === "success");
+}
+
+function setCuratorBusy(isBusy) {
+  elements.curatorSaveBtn.disabled = isBusy;
+  elements.curatorDeleteBtn.disabled = isBusy;
+  elements.curatorResetBtn.disabled = isBusy;
+}
+
+function populateCuratorForm(artifactId) {
+  const artifact = artifactMap.get(artifactId);
+  if (!artifact) {
+    return;
+  }
+
+  elements.curatorArtifactSelect.value = artifactId;
+  elements.curatorTokenInput.value = state.curatorToken;
+  elements.curatorTitleInput.value = artifact.title ?? "";
+  elements.curatorHookInput.value = artifact.hook ?? "";
+  elements.curatorKeywordsInput.value = Array.isArray(artifact.keywords) ? artifact.keywords.join(", ") : "";
+  elements.curatorYearInput.value = Number.isFinite(artifact.releaseYear) ? String(artifact.releaseYear) : "";
+  elements.curatorRankInput.value = Number.isFinite(artifact.featuredRank) ? String(artifact.featuredRank) : "";
+  elements.curatorStoryTitleInput.value = artifact.story?.title ?? "";
+  elements.curatorStorySummaryInput.value = artifact.story?.summary ?? "";
+  elements.curatorStoryBodyInput.value = Array.isArray(artifact.story?.body) ? artifact.story.body.join("\n") : "";
+  elements.curatorStoryReferencesInput.value = Array.isArray(artifact.story?.references)
+    ? artifact.story.references.map((reference) => `${reference.label ?? ""} | ${reference.url ?? ""}`).join("\n")
+    : "";
+
+  state.curatorWorkingHotspots = Array.isArray(artifact.hotspots)
+    ? artifact.hotspots.map((hotspot) => ({
+        id: hotspot.id,
+        label: hotspot.label ?? "",
+        title: hotspot.title ?? "",
+        body: hotspot.body ?? "",
+        reference: hotspot.reference ?? ""
+      }))
+    : [];
+
+  renderCuratorHotspotsEditor();
+
+  const hasOverride = Boolean(state.cmsOverrides[artifactId]);
+  if (hasOverride) {
+    setCuratorStatus("Editing active override.", "success");
+  } else {
+    setCuratorStatus("No override saved yet. Saving will create one.", "neutral");
+  }
+}
+
+function renderCuratorHotspotsEditor() {
+  if (!state.curatorWorkingHotspots.length) {
+    elements.curatorHotspotsList.innerHTML = '<p class="insights-empty">No hotspots available for this artifact.</p>';
+    return;
+  }
+
+  elements.curatorHotspotsList.innerHTML = state.curatorWorkingHotspots
+    .map(
+      (hotspot) => `
+        <div class="curator-hotspot" data-hotspot-id="${escapeHtml(hotspot.id)}">
+          <p class="curator-hotspot-title">${escapeHtml(hotspot.id)}</p>
+          <label class="curator-field">
+            <span>Label</span>
+            <input class="search-input curator-hotspot-label" type="text" value="${escapeHtml(hotspot.label)}" />
+          </label>
+          <label class="curator-field">
+            <span>Title</span>
+            <input class="search-input curator-hotspot-title-input" type="text" value="${escapeHtml(hotspot.title)}" />
+          </label>
+          <label class="curator-field">
+            <span>Body</span>
+            <textarea class="curator-textarea curator-hotspot-body" rows="3">${escapeHtml(hotspot.body)}</textarea>
+          </label>
+          <label class="curator-field">
+            <span>Reference URL</span>
+            <input class="search-input curator-hotspot-reference" type="text" value="${escapeHtml(hotspot.reference ?? "")}" />
+          </label>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function collectCuratorHotspots() {
+  const nodes = Array.from(elements.curatorHotspotsList.querySelectorAll("[data-hotspot-id]"));
+
+  return nodes.map((node) => {
+    const id = node.getAttribute("data-hotspot-id") ?? "";
+    const source = artifactMap.get(state.curatorArtifactId)?.hotspots?.find((item) => item.id === id);
+    return {
+      ...(source ?? { id }),
+      id,
+      label: node.querySelector(".curator-hotspot-label")?.value?.trim() ?? "",
+      title: node.querySelector(".curator-hotspot-title-input")?.value?.trim() ?? "",
+      body: node.querySelector(".curator-hotspot-body")?.value?.trim() ?? "",
+      reference: node.querySelector(".curator-hotspot-reference")?.value?.trim() || undefined
+    };
+  });
+}
+
+function collectCuratorPayload() {
+  const yearRaw = elements.curatorYearInput.value.trim();
+  const rankRaw = elements.curatorRankInput.value.trim();
+  const parsedYear = Number(yearRaw);
+  const parsedRank = Number(rankRaw);
+
+  const keywords = elements.curatorKeywordsInput.value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const storyBody = elements.curatorStoryBodyInput.value
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const storyReferences = elements.curatorStoryReferencesInput.value
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [labelPart, urlPart] = entry.split("|");
+      return {
+        label: (labelPart ?? "").trim(),
+        url: (urlPart ?? "").trim()
+      };
+    })
+    .filter((entry) => entry.label && entry.url);
+
+  return {
+    title: elements.curatorTitleInput.value.trim(),
+    hook: elements.curatorHookInput.value.trim(),
+    keywords,
+    releaseYear: yearRaw && Number.isFinite(parsedYear) ? parsedYear : null,
+    featuredRank: rankRaw && Number.isFinite(parsedRank) ? parsedRank : null,
+    story: {
+      title: elements.curatorStoryTitleInput.value.trim(),
+      summary: elements.curatorStorySummaryInput.value.trim(),
+      body: storyBody,
+      references: storyReferences
+    },
+    hotspots: collectCuratorHotspots()
+  };
+}
+
+function getCuratorHeaders() {
+  const headers = {
+    "content-type": "application/json"
+  };
+
+  const token = state.curatorToken.trim();
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+async function saveCuratorOverride(artifactId) {
+  if (!artifactId) {
+    setCuratorStatus("Select an artifact first.", "error");
+    return;
+  }
+
+  setCuratorBusy(true);
+  setCuratorStatus("Saving override...", "neutral");
+
+  try {
+    const payload = collectCuratorPayload();
+    const response = await fetch(`/api/cms/overrides/${encodeURIComponent(artifactId)}`, {
+      method: "PUT",
+      headers: getCuratorHeaders(),
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "request_failed" }));
+      throw new Error(error.error || `request_failed_${response.status}`);
+    }
+
+    const data = await response.json();
+    state.cmsOverrides[artifactId] = data.override;
+    applyOverrides(state.cmsOverrides);
+    renderGallery();
+    renderStoryPanel();
+    renderHotspotList();
+    renderCompareList();
+    renderCuratorArtifactOptions();
+    populateCuratorForm(artifactId);
+
+    if (artifactId === state.currentArtifactId) {
+      await loadArtifact(artifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    }
+
+    setCuratorStatus("Override saved successfully.", "success");
+    trackEvent("curator_override_saved", { artifactId });
+  } catch (error) {
+    setCuratorStatus(`Save failed: ${error.message}`, "error");
+  } finally {
+    setCuratorBusy(false);
+  }
+}
+
+async function deleteCuratorOverride(artifactId) {
+  if (!artifactId) {
+    setCuratorStatus("Select an artifact first.", "error");
+    return;
+  }
+
+  setCuratorBusy(true);
+  setCuratorStatus("Deleting override...", "neutral");
+
+  try {
+    const response = await fetch(`/api/cms/overrides/${encodeURIComponent(artifactId)}`, {
+      method: "DELETE",
+      headers: getCuratorHeaders()
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "request_failed" }));
+      throw new Error(error.error || `request_failed_${response.status}`);
+    }
+
+    delete state.cmsOverrides[artifactId];
+    applyOverrides(state.cmsOverrides);
+    renderGallery();
+    renderStoryPanel();
+    renderHotspotList();
+    renderCompareList();
+    populateCuratorForm(artifactId);
+
+    if (artifactId === state.currentArtifactId) {
+      await loadArtifact(artifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    }
+
+    setCuratorStatus("Override deleted.", "success");
+    trackEvent("curator_override_deleted", { artifactId });
+  } catch (error) {
+    setCuratorStatus(`Delete failed: ${error.message}`, "error");
+  } finally {
+    setCuratorBusy(false);
+  }
+}
+
 function setShortcutsOpen(open, options = {}) {
   state.shortcutsOpen = Boolean(open);
   elements.shortcutsModal.hidden = !state.shortcutsOpen;
 
   if (state.shortcutsOpen) {
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { skipTrack: true });
+    }
     elements.shortcutsCloseBtn.focus();
   } else {
     elements.shortcutsBtn.focus();
@@ -1148,6 +1531,13 @@ function handleViewerCameraChange(source) {
 
 function handleKeydown(event) {
   if (event.key === "Escape") {
+    if (state.curatorOpen) {
+      event.preventDefault();
+      setCuratorOpen(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_curator" });
+      return;
+    }
+
     if (state.shortcutsOpen) {
       event.preventDefault();
       setShortcutsOpen(false, { source: "keyboard" });
@@ -1168,9 +1558,16 @@ function handleKeydown(event) {
   }
 
   if (event.key === "?") {
+    if (state.curatorOpen) {
+      return;
+    }
     event.preventDefault();
     setShortcutsOpen(!state.shortcutsOpen, { source: "keyboard" });
     trackEvent("keyboard_shortcut_used", { key: "?", action: "toggle_shortcuts" });
+    return;
+  }
+
+  if (state.curatorOpen) {
     return;
   }
 

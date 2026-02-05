@@ -855,6 +855,119 @@ body {
   color: var(--ink-strong);
 }
 
+.curator-modal {
+  padding: 0.5rem;
+}
+
+.curator-card {
+  width: min(860px, calc(100vw - 1rem));
+  max-height: calc(100vh - 1rem);
+  overflow: auto;
+}
+
+.curator-head-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.curator-note {
+  margin: 0.42rem 0 0;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.curator-grid {
+  margin-top: 0.72rem;
+  display: grid;
+  gap: 0.54rem;
+}
+
+.curator-field {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.curator-field > span {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.curator-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.48rem;
+}
+
+.curator-textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-strong);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.5rem 0.6rem;
+  resize: vertical;
+  min-height: 64px;
+}
+
+.curator-textarea:focus {
+  border-color: rgba(184, 106, 59, 0.56);
+  box-shadow: 0 0 0 3px rgba(184, 106, 59, 0.14);
+  outline: none;
+}
+
+.curator-hotspots {
+  margin-top: 0.9rem;
+}
+
+.curator-hotspots-list {
+  margin-top: 0.44rem;
+  display: grid;
+  gap: 0.48rem;
+}
+
+.curator-hotspot {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.38rem;
+}
+
+.curator-hotspot-title {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.curator-status {
+  margin: 0.8rem 0 0;
+  min-height: 1.2em;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.curator-status.is-error {
+  color: #b54033;
+}
+
+.curator-status.is-success {
+  color: #2f7a48;
+}
+
+.curator-actions {
+  margin-top: 0.3rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.44rem;
+}
+
 .empty-state {
   margin: 0.72rem 0;
   text-align: center;
@@ -1001,6 +1114,15 @@ body {
     left: 0.5rem;
     right: 0.5rem;
     bottom: 9.2rem;
+  }
+
+  .curator-row {
+    grid-template-columns: 1fr;
+  }
+
+  .curator-actions {
+    justify-content: stretch;
+    flex-wrap: wrap;
   }
 }
 

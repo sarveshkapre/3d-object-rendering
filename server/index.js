@@ -133,12 +133,45 @@ function applyAnalyticsEvent(store, event) {
 
 function mergeOverride(existing, update) {
   const next = { ...existing };
-  const allowed = ["title", "hook", "keywords", "story", "releaseYear", "featuredRank"];
+  const allowed = ["title", "hook", "keywords", "story", "releaseYear", "featuredRank", "hotspots"];
 
   for (const key of allowed) {
     if (update[key] !== undefined) {
       next[key] = update[key];
     }
+  }
+
+  if (Array.isArray(next.keywords)) {
+    next.keywords = next.keywords.filter((entry) => typeof entry === "string");
+  }
+
+  if (next.story && typeof next.story === "object") {
+    const references = Array.isArray(next.story.references)
+      ? next.story.references
+          .filter((entry) => entry && typeof entry.label === "string" && typeof entry.url === "string")
+          .map((entry) => ({ label: entry.label, url: entry.url }))
+      : [];
+
+    const body = Array.isArray(next.story.body) ? next.story.body.filter((entry) => typeof entry === "string") : [];
+
+    next.story = {
+      title: typeof next.story.title === "string" ? next.story.title : "",
+      summary: typeof next.story.summary === "string" ? next.story.summary : "",
+      body,
+      references
+    };
+  }
+
+  if (Array.isArray(next.hotspots)) {
+    next.hotspots = next.hotspots
+      .filter((entry) => entry && typeof entry.id === "string")
+      .map((entry) => ({
+        id: entry.id,
+        label: typeof entry.label === "string" ? entry.label : "",
+        title: typeof entry.title === "string" ? entry.title : "",
+        body: typeof entry.body === "string" ? entry.body : "",
+        reference: typeof entry.reference === "string" ? entry.reference : undefined
+      }));
   }
 
   return next;
