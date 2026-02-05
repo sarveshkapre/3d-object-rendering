@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "vite",
+    "dev:api": "node server/index.js",
+    "assets:pull": "node scripts/pull-models.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -12,6 +15,7 @@
     "three": "^0.181.0"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "vite": "^7.1.10"
   }
 }

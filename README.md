@@ -22,6 +22,7 @@ Minimalist white-space 3D artifact experience with:
 
 ```bash
 npm install
+npm run assets:pull
 npm run dev
 ```
 
@@ -34,10 +35,41 @@ npm run preview
 
 ## Notes
 
-- Models are loaded from the Khronos public sample model repository.
+- Models are loaded locally from `public/models`.
 - URLs are updated in place so any current view can be shared directly.
 - Build output is split with a dedicated Three.js vendor chunk for better browser caching.
-- `Popularity` sort is based on in-session engagement (views, hotspots, tours, shares).
+- `Popularity` sort uses persistent analytics counters when API is available (fallback: in-session metrics).
+
+## Asset Pipeline
+
+Pull models into local hosting:
+
+```bash
+npm run assets:pull
+```
+
+The pull script downloads source GLBs and saves:
+
+- `public/models/temple-sentinel.glb`
+- `public/models/heritage-optics.glb`
+- `public/models/ritual-lantern.glb`
+
+## API Server
+
+The API runs with frontend in `npm run dev`.
+
+- API default URL: `http://localhost:8787`
+- Health check: `GET /api/health`
+- Analytics ingest: `POST /api/analytics/ingest`
+- Analytics counters: `GET /api/analytics/counters`
+- CMS overrides read: `GET /api/cms/overrides`
+- CMS overrides write: `PUT /api/cms/overrides/:artifactId`
+- CMS overrides delete: `DELETE /api/cms/overrides/:artifactId`
+
+Local persistent file:
+
+- `server/data/store.local.json` (gitignored)
+- Example seed: `server/data/store.example.json`
 
 ## Analytics
 
@@ -46,8 +78,11 @@ Client events are captured in batches for: artifact views, load success/failure,
 Optional environment variables:
 
 ```bash
-VITE_ANALYTICS_ENDPOINT=https://your-endpoint.example.com/ingest
+VITE_ANALYTICS_ENDPOINT=/api/analytics/ingest
 VITE_ANALYTICS_DEBUG=1
+API_PORT=8787
+ADMIN_TOKEN=your-secret-token
+API_STORE_PATH=/absolute/path/to/store.json
 ```
 
-When `VITE_ANALYTICS_ENDPOINT` is not set, events are stored locally on `window.__artifactAnalytics` for inspection.
+If `VITE_ANALYTICS_ENDPOINT` is unset, it defaults to `/api/analytics/ingest`.

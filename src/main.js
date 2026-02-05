@@ -94,6 +94,7 @@ const state = {
   tourAutoPlayTimer: null,
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
+  serverMetrics: {},
   shortcutsOpen: false,
   previousTourState: {
     active: false,
@@ -102,7 +103,7 @@ const state = {
 };
 
 const analytics = createAnalyticsTracker({
-  endpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT ?? "",
+  endpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT ?? "/api/analytics/ingest",
   debug: import.meta.env.DEV || import.meta.env.VITE_ANALYTICS_DEBUG === "1"
 });
 
@@ -293,6 +294,7 @@ function initialize() {
 }
 
 async function bootstrap(artifactId) {
+  await loadServerData();
   await loadArtifact(artifactId, { restoreFromUrl: true, skipCompareReload: true });
 
   if (!state.compareEnabled) {
@@ -559,6 +561,62 @@ async function loadArtifact(artifactId, options = {}) {
     console.error(error);
   } finally {
     window.setTimeout(() => setPrimaryLoading(false), 220);
+  }
+}
+
+async function loadServerData() {
+  const [overridesResult, countersResult] = await Promise.allSettled([
+    fetch("/api/cms/overrides"),
+    fetch("/api/analytics/counters")
+  ]);
+
+  if (overridesResult.status === "fulfilled" && overridesResult.value.ok) {
+    const payload = await overridesResult.value.json();
+    applyOverrides(payload.overrides ?? {});
+  }
+
+  if (countersResult.status === "fulfilled" && countersResult.value.ok) {
+    const payload = await countersResult.value.json();
+    state.serverMetrics = payload.artifacts ?? {};
+  }
+
+  renderGallery();
+  renderInsightsPanel();
+}
+
+function applyOverrides(overrides) {
+  for (const artifact of artifacts) {
+    const override = overrides[artifact.id];
+    if (!override || typeof override !== "object") {
+      continue;
+    }
+
+    if (typeof override.title === "string" && override.title.trim()) {
+      artifact.title = override.title.trim();
+    }
+
+    if (typeof override.hook === "string" && override.hook.trim()) {
+      artifact.hook = override.hook.trim();
+    }
+
+    if (Array.isArray(override.keywords)) {
+      artifact.keywords = override.keywords.filter((entry) => typeof entry === "string");
+    }
+
+    if (Number.isFinite(override.releaseYear)) {
+      artifact.releaseYear = Number(override.releaseYear);
+    }
+
+    if (Number.isFinite(override.featuredRank)) {
+      artifact.featuredRank = Number(override.featuredRank);
+    }
+
+    if (override.story && typeof override.story === "object") {
+      artifact.story = {
+        ...artifact.story,
+        ...override.story
+      };
+    }
   }
 }
 
@@ -897,7 +955,7 @@ function renderInsightsPanel() {
   }
 
   const artifact = artifactMap.get(state.currentArtifactId);
-  const artifactMetrics = getArtifactMetrics(state.currentArtifactId);
+  const artifactMetrics = getDisplayMetricsForArtifact(state.currentArtifactId);
   const hotspotEntries = Object.entries(artifactMetrics.hotspotCounts ?? {});
   const topHotspots = hotspotEntries
     .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
@@ -1390,29 +1448,66 @@ function persistSessionMetrics(metrics) {
 }
 
 function getArtifactMetrics(artifactId) {
+  const base = {
+    views: 0,
+    hotspotOpens: 0,
+    tourStarts: 0,
+    tourLastStepReached: 0,
+    shares: 0,
+    compareViews: 0,
+    hotspotCounts: {}
+  };
+
   if (!artifactId) {
-    return {
-      views: 0,
-      hotspotOpens: 0,
-      tourStarts: 0,
-      tourLastStepReached: 0,
-      shares: 0,
-      compareViews: 0,
-      hotspotCounts: {}
-    };
+    return base;
   }
 
-  return (
-    state.sessionMetrics.artifacts[artifactId] ?? {
-      views: 0,
-      hotspotOpens: 0,
-      tourStarts: 0,
-      tourLastStepReached: 0,
-      shares: 0,
-      compareViews: 0,
-      hotspotCounts: {}
+  return state.sessionMetrics.artifacts[artifactId] ?? base;
+}
+
+function getDisplayMetricsForArtifact(artifactId) {
+  const serverMetrics = state.serverMetrics[artifactId];
+  if (serverMetrics && typeof serverMetrics === "object") {
+    return serverMetrics;
+  }
+  return getArtifactMetrics(artifactId);
+}
+
+function applyMetricEventToRecord(record, eventName, details = {}) {
+  if (eventName === "artifact_viewed") {
+    record.views += 1;
+    return true;
+  }
+
+  if (eventName === "hotspot_opened") {
+    record.hotspotOpens += 1;
+    if (details.hotspotId) {
+      record.hotspotCounts[details.hotspotId] = (record.hotspotCounts[details.hotspotId] ?? 0) + 1;
     }
-  );
+    return true;
+  }
+
+  if (eventName === "tour_started") {
+    record.tourStarts += 1;
+    return true;
+  }
+
+  if (eventName === "tour_last_step_reached") {
+    record.tourLastStepReached += 1;
+    return true;
+  }
+
+  if (eventName === "share_link_copied") {
+    record.shares += 1;
+    return true;
+  }
+
+  if (eventName === "compare_artifact_viewed") {
+    record.compareViews += 1;
+    return true;
+  }
+
+  return false;
 }
 
 function updateSessionMetrics(eventName, details = {}) {
@@ -1422,28 +1517,19 @@ function updateSessionMetrics(eventName, details = {}) {
   }
 
   const metrics = getArtifactMetrics(artifactId);
-
-  if (eventName === "artifact_viewed") {
-    metrics.views += 1;
-  } else if (eventName === "hotspot_opened") {
-    metrics.hotspotOpens += 1;
-    if (details.hotspotId) {
-      metrics.hotspotCounts[details.hotspotId] = (metrics.hotspotCounts[details.hotspotId] ?? 0) + 1;
-    }
-  } else if (eventName === "tour_started") {
-    metrics.tourStarts += 1;
-  } else if (eventName === "tour_last_step_reached") {
-    metrics.tourLastStepReached += 1;
-  } else if (eventName === "share_link_copied") {
-    metrics.shares += 1;
-  } else if (eventName === "compare_artifact_viewed") {
-    metrics.compareViews += 1;
-  } else {
+  const changed = applyMetricEventToRecord(metrics, eventName, details);
+  if (!changed) {
     return;
   }
 
   state.sessionMetrics.artifacts[artifactId] = metrics;
   persistSessionMetrics(state.sessionMetrics);
+
+  if (state.serverMetrics[artifactId]) {
+    const serverRecord = state.serverMetrics[artifactId];
+    applyMetricEventToRecord(serverRecord, eventName, details);
+    state.serverMetrics[artifactId] = serverRecord;
+  }
 
   if (artifactId === state.currentArtifactId) {
     renderInsightsPanel();
@@ -1507,7 +1593,7 @@ function getRankedArtifacts() {
 }
 
 function getArtifactPopularityScore(artifactId) {
-  const metrics = getArtifactMetrics(artifactId);
+  const metrics = getDisplayMetricsForArtifact(artifactId);
   return metrics.views + metrics.hotspotOpens * 2 + metrics.tourStarts * 3 + metrics.tourLastStepReached * 4 + metrics.shares * 5;
 }
 

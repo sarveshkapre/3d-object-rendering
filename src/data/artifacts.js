@@ -27,7 +27,8 @@ export const artifacts = [
         { label: "Temple Architecture in India", url: "https://en.wikipedia.org/wiki/Indian_temple_architecture" }
       ]
     },
-    modelUrl:
+    modelUrl: "/models/temple-sentinel.glb",
+    modelSourceUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
     modelRotation: [0, Math.PI * 1.2, 0],
     hotspotTitle: "Interpretive Notes",
@@ -112,7 +113,8 @@ export const artifacts = [
         { label: "Lens Design Principles", url: "https://en.wikipedia.org/wiki/Camera_lens" }
       ]
     },
-    modelUrl:
+    modelUrl: "/models/heritage-optics.glb",
+    modelSourceUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/AntiqueCamera/glTF-Binary/AntiqueCamera.glb",
     modelRotation: [0, Math.PI * 0.75, 0],
     hotspotTitle: "Engineering Notes",
@@ -197,7 +199,8 @@ export const artifacts = [
         { label: "Lighting Design Basics", url: "https://en.wikipedia.org/wiki/Lighting" }
       ]
     },
-    modelUrl:
+    modelUrl: "/models/ritual-lantern.glb",
+    modelSourceUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Lantern/glTF-Binary/Lantern.glb",
     modelRotation: [0, Math.PI * 0.9, 0],
     hotspotTitle: "Design Notes",
