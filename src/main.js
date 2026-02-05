@@ -1,5 +1,6 @@
 import "./style.css";
 import { artifacts, artifactMap, categories } from "./data/artifacts.js";
+import { createAnalyticsTracker } from "./analytics.js";
 import { ArtifactViewer } from "./viewer.js";
 
 const elements = {
@@ -74,8 +75,18 @@ const state = {
   cameraSyncLock: false,
   primaryLoading: false,
   compareLoading: false,
-  isRestoringState: false
+  isRestoringState: false,
+  searchTrackTimer: null,
+  previousTourState: {
+    active: false,
+    index: null
+  }
 };
+
+const analytics = createAnalyticsTracker({
+  endpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT ?? "",
+  debug: import.meta.env.DEV || import.meta.env.VITE_ANALYTICS_DEBUG === "1"
+});
 
 const primaryViewer = new ArtifactViewer({
   canvas: elements.canvas,
@@ -95,12 +106,18 @@ const primaryViewer = new ArtifactViewer({
       renderGallery();
       renderCompareList();
       updateHeaderControls();
+      trackEvent("artifact_viewed", {
+        artifactId: artifact.id,
+        category: artifact.category,
+        detailView: state.activeDetailView
+      });
     },
     onHotspotData: (hotspots) => {
       state.hotspotData = hotspots;
       renderHotspotList();
     },
     onHotspotSelect: ({ hotspot, tourActive, tourIndex, tourTotal, tourCaption }) => {
+      const previousHotspotId = state.selectedHotspot?.id ?? null;
       state.selectedHotspot = hotspot;
       state.tourActive = tourActive;
       state.tourIndex = tourIndex;
@@ -115,8 +132,18 @@ const primaryViewer = new ArtifactViewer({
       renderHotspotList();
       updateHeaderControls();
       scheduleUrlUpdate();
+
+      if (previousHotspotId !== hotspot.id) {
+        trackEvent("hotspot_opened", {
+          artifactId: state.currentArtifactId,
+          hotspotId: hotspot.id,
+          hotspotLabel: hotspot.label,
+          viaTour: state.tourActive
+        });
+      }
     },
     onTourStateChange: ({ active, index, total, caption }) => {
+      const previousTourState = { ...state.previousTourState };
       state.tourActive = active;
       state.tourIndex = index;
       state.tourTotal = total;
@@ -129,10 +156,48 @@ const primaryViewer = new ArtifactViewer({
       renderHotspotCard();
       updateHeaderControls();
       scheduleUrlUpdate();
+
+      if (!previousTourState.active && active) {
+        trackEvent("tour_started", {
+          artifactId: state.currentArtifactId,
+          totalSteps: total
+        });
+      }
+
+      if (active && previousTourState.index !== index) {
+        trackEvent("tour_step_viewed", {
+          artifactId: state.currentArtifactId,
+          step: index + 1,
+          totalSteps: total
+        });
+
+        if (index === total - 1) {
+          trackEvent("tour_last_step_reached", {
+            artifactId: state.currentArtifactId,
+            totalSteps: total
+          });
+        }
+      }
+
+      if (previousTourState.active && !active) {
+        trackEvent("tour_stopped", {
+          artifactId: state.currentArtifactId,
+          lastStep: previousTourState.index === null ? null : previousTourState.index + 1
+        });
+      }
+
+      state.previousTourState = {
+        active,
+        index
+      };
     },
     onHotspotVisibilityChange: () => {
       updateHeaderControls();
       scheduleUrlUpdate();
+      trackEvent("hotspots_visibility_changed", {
+        artifactId: state.currentArtifactId,
+        visible: primaryViewer.hotspotsEnabled
+      });
     },
     onCameraChange: () => {
       handleViewerCameraChange("primary");
@@ -151,6 +216,10 @@ const compareViewer = new ArtifactViewer({
     },
     onArtifactLoad: ({ artifact }) => {
       elements.comparePaneTitle.textContent = artifact.title;
+      trackEvent("compare_artifact_viewed", {
+        primaryArtifactId: state.currentArtifactId,
+        compareArtifactId: artifact.id
+      });
     },
     onCameraChange: () => {
       handleViewerCameraChange("compare");
@@ -164,6 +233,13 @@ initialize();
 
 function initialize() {
   elements.searchInput.value = state.searchQuery;
+
+  trackEvent("session_started", {
+    sessionId: analytics.getSessionId(),
+    compareFromUrl: state.compareEnabled,
+    detailView: state.activeDetailView,
+    hasSearchQuery: Boolean(state.searchQuery)
+  });
 
   renderFilters();
   renderGallery();
@@ -201,6 +277,14 @@ function bindEvents() {
     state.searchQuery = elements.searchInput.value.trim();
     renderGallery();
     scheduleUrlUpdate();
+
+    window.clearTimeout(state.searchTrackTimer);
+    state.searchTrackTimer = window.setTimeout(() => {
+      trackEvent("search_updated", {
+        query: state.searchQuery,
+        results: getVisibleArtifacts().length
+      });
+    }, 380);
   });
 
   elements.resetBtn.addEventListener("click", () => {
@@ -209,6 +293,10 @@ function bindEvents() {
       compareViewer.resetView();
     }
     showToast("Camera reset");
+    trackEvent("camera_reset", {
+      artifactId: state.currentArtifactId,
+      compareEnabled: state.compareEnabled
+    });
   });
 
   elements.hotspotToggleBtn.addEventListener("click", () => {
@@ -232,6 +320,10 @@ function bindEvents() {
       state.compareReady = false;
       setCompareModeUI(false);
       scheduleUrlUpdate();
+      trackEvent("compare_toggled", {
+        enabled: false,
+        primaryArtifactId: state.currentArtifactId
+      });
       return;
     }
 
@@ -241,6 +333,11 @@ function bindEvents() {
     setCompareModeUI(true);
     await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true });
     scheduleUrlUpdate();
+    trackEvent("compare_toggled", {
+      enabled: true,
+      primaryArtifactId: state.currentArtifactId,
+      compareArtifactId: state.compareArtifactId
+    });
   });
 
   elements.syncBtn.addEventListener("click", () => {
@@ -256,6 +353,9 @@ function bindEvents() {
     }
 
     scheduleUrlUpdate();
+    trackEvent("compare_sync_toggled", {
+      enabled: state.compareSync
+    });
   });
 
   elements.listToggleBtn.addEventListener("click", () => {
@@ -273,11 +373,13 @@ function bindEvents() {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
       elements.fullscreenBtn.textContent = "Exit Fullscreen";
+      trackEvent("fullscreen_toggled", { enabled: true });
       return;
     }
 
     await document.exitFullscreen();
     elements.fullscreenBtn.textContent = "Fullscreen";
+    trackEvent("fullscreen_toggled", { enabled: false });
   });
 
   document.addEventListener("fullscreenchange", () => {
@@ -290,9 +392,40 @@ function bindEvents() {
     try {
       await navigator.clipboard.writeText(url);
       showToast("Share link copied");
+      trackEvent("share_link_copied", {
+        artifactId: state.currentArtifactId,
+        compareEnabled: state.compareEnabled
+      });
     } catch {
       showToast("Clipboard unavailable. URL updated in address bar.");
+      trackEvent("share_link_copy_failed", {
+        artifactId: state.currentArtifactId
+      });
     }
+  });
+
+  elements.hotspotLink.addEventListener("click", () => {
+    const hotspotId = state.selectedHotspot?.id ?? null;
+    trackEvent("hotspot_reference_opened", {
+      artifactId: state.currentArtifactId,
+      hotspotId
+    });
+  });
+
+  elements.storyReferences.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLAnchorElement)) {
+      return;
+    }
+
+    trackEvent("story_reference_opened", {
+      artifactId: state.currentArtifactId,
+      href: target.href
+    });
+  });
+
+  window.addEventListener("beforeunload", () => {
+    analytics.shutdown();
   });
 }
 
@@ -301,6 +434,7 @@ async function loadArtifact(artifactId, options = {}) {
   if (!artifact) {
     return;
   }
+  const loadStartedAt = performance.now();
 
   state.currentArtifactId = artifactId;
   state.selectedHotspot = null;
@@ -312,6 +446,10 @@ async function loadArtifact(artifactId, options = {}) {
 
   try {
     await primaryViewer.loadArtifact(artifact);
+    trackEvent("artifact_load_succeeded", {
+      artifactId,
+      durationMs: Math.round(performance.now() - loadStartedAt)
+    });
     renderStoryPanel();
 
     if (options.restoreFromUrl) {
@@ -347,6 +485,10 @@ async function loadArtifact(artifactId, options = {}) {
     scheduleUrlUpdate();
   } catch (error) {
     showToast("Model failed to load. Try another artifact.");
+    trackEvent("artifact_load_failed", {
+      artifactId,
+      durationMs: Math.round(performance.now() - loadStartedAt)
+    });
     console.error(error);
   } finally {
     window.setTimeout(() => setPrimaryLoading(false), 220);
@@ -362,6 +504,7 @@ async function loadCompareArtifact(artifactId, options = {}) {
   if (!artifact) {
     return;
   }
+  const loadStartedAt = performance.now();
 
   state.compareArtifactId = artifactId;
   state.compareReady = false;
@@ -370,6 +513,10 @@ async function loadCompareArtifact(artifactId, options = {}) {
 
   try {
     await compareViewer.loadArtifact(artifact);
+    trackEvent("compare_load_succeeded", {
+      compareArtifactId: artifactId,
+      durationMs: Math.round(performance.now() - loadStartedAt)
+    });
     compareViewer.setHotspotVisibility(false);
     state.compareReady = true;
 
@@ -380,6 +527,10 @@ async function loadCompareArtifact(artifactId, options = {}) {
     scheduleUrlUpdate();
   } catch (error) {
     showToast("Comparison artifact failed to load.");
+    trackEvent("compare_load_failed", {
+      compareArtifactId: artifactId,
+      durationMs: Math.round(performance.now() - loadStartedAt)
+    });
     console.error(error);
   } finally {
     window.setTimeout(() => setCompareLoading(false), 220);
@@ -424,6 +575,7 @@ function restoreFromUrlState() {
 
 function setDetailView(view, options = {}) {
   const normalizedView = view === "story" ? "story" : "hotspots";
+  const previousView = state.activeDetailView;
   state.activeDetailView = normalizedView;
 
   const showStory = normalizedView === "story";
@@ -437,6 +589,13 @@ function setDetailView(view, options = {}) {
   }
 
   updateDetailToggleUI();
+
+  if (previousView !== normalizedView && state.currentArtifactId) {
+    trackEvent("detail_view_changed", {
+      artifactId: state.currentArtifactId,
+      view: normalizedView
+    });
+  }
 
   if (!options.skipUrlUpdate) {
     scheduleUrlUpdate();
@@ -463,6 +622,11 @@ function renderFilters() {
       state.currentCategory = category.id;
       renderFilters();
       renderGallery();
+      trackEvent("category_filter_changed", {
+        category: category.id,
+        searchQuery: state.searchQuery,
+        results: getVisibleArtifacts().length
+      });
     });
 
     elements.filterBar.appendChild(button);
@@ -471,31 +635,7 @@ function renderFilters() {
 
 function renderGallery() {
   elements.galleryList.innerHTML = "";
-
-  const query = state.searchQuery.trim().toLowerCase();
-
-  const visibleArtifacts = artifacts.filter((artifact) => {
-    if (state.currentCategory !== "all" && artifact.category !== state.currentCategory) {
-      return false;
-    }
-
-    if (!query) {
-      return true;
-    }
-
-    const searchHaystack = [
-      artifact.title,
-      artifact.hook,
-      artifact.category,
-      ...(artifact.keywords ?? []),
-      artifact.story?.title ?? "",
-      artifact.story?.summary ?? ""
-    ]
-      .join(" ")
-      .toLowerCase();
-
-    return searchHaystack.includes(query);
-  });
+  const visibleArtifacts = getVisibleArtifacts();
 
   if (!visibleArtifacts.length) {
     elements.galleryList.innerHTML = '<p class="empty-state">No artifacts match this search.</p>';
@@ -518,6 +658,11 @@ function renderGallery() {
     `;
 
     button.addEventListener("click", () => {
+      trackEvent("artifact_selected_from_gallery", {
+        artifactId: artifact.id,
+        fromCategory: state.currentCategory,
+        searchQuery: state.searchQuery
+      });
       void loadArtifact(artifact.id, { restoreFromUrl: false });
     });
 
@@ -545,6 +690,10 @@ function renderCompareList() {
       if (!state.compareEnabled || artifact.id === state.currentArtifactId) {
         return;
       }
+      trackEvent("compare_artifact_selected", {
+        primaryArtifactId: state.currentArtifactId,
+        compareArtifactId: artifact.id
+      });
       await loadCompareArtifact(artifact.id, { syncFromPrimary: true });
     });
 
@@ -824,6 +973,42 @@ function getInitialCompareArtifactId(parsedCompareArtifactId) {
   }
 
   return artifacts[0]?.id ?? null;
+}
+
+function getVisibleArtifacts() {
+  const query = state.searchQuery.trim().toLowerCase();
+
+  return artifacts.filter((artifact) => {
+    if (state.currentCategory !== "all" && artifact.category !== state.currentCategory) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    const searchHaystack = [
+      artifact.title,
+      artifact.hook,
+      artifact.category,
+      ...(artifact.keywords ?? []),
+      artifact.story?.title ?? "",
+      artifact.story?.summary ?? ""
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return searchHaystack.includes(query);
+  });
+}
+
+function trackEvent(eventName, payload = {}) {
+  analytics.track(eventName, {
+    artifactId: state.currentArtifactId,
+    compareArtifactId: state.compareEnabled ? state.compareArtifactId : null,
+    detailView: state.activeDetailView,
+    ...payload
+  });
 }
 
 function escapeHtml(value) {
