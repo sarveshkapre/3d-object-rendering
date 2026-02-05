@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Artifact Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <aside class="gallery-panel glass" aria-label="Artifact library">
+        <p class="panel-label">Collection</p>
+        <h1 class="brand-title">Artifact Viewer</h1>
+        <p class="brand-subtitle">Museum-grade 3D storytelling in a pure canvas space.</p>
+        <div id="filterBar" class="filter-bar" role="tablist" aria-label="Artifact categories"></div>
+        <div id="galleryList" class="gallery-list" role="listbox" aria-label="Artifacts"></div>
+      </aside>
+
+      <main class="stage">
+        <canvas id="viewport" aria-label="3D object viewer"></canvas>
+
+        <div id="loadingOverlay" class="loading-overlay">
+          <p id="loadingText" class="loading-text">Preparing artifact…</p>
+          <div class="loading-track" role="progressbar" aria-label="Model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="loadingBar" class="loading-bar"></div>
+          </div>
+        </div>
+
+        <div id="hotspotLayer" class="hotspot-layer" aria-hidden="true"></div>
+
+        <header class="top-bar">
+          <p id="artifactTitle" class="artifact-title"></p>
+          <div class="controls glass" role="toolbar" aria-label="Viewer controls">
+            <button id="resetBtn" class="icon-btn" title="Reset view" aria-label="Reset view">Reset</button>
+            <button id="hotspotToggleBtn" class="icon-btn" title="Toggle hotspots" aria-label="Toggle hotspots">Hotspots</button>
+            <button id="tourBtn" class="icon-btn" title="Start guided tour" aria-label="Start guided tour">Start Tour</button>
+            <button id="fullscreenBtn" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">Fullscreen</button>
+            <button id="shareBtn" class="icon-btn" title="Copy share link" aria-label="Copy share link">Share</button>
+          </div>
+        </header>
+
+        <section class="meta-row">
+          <p id="artifactHook" class="artifact-hook"></p>
+          <button id="listToggleBtn" class="chip-btn" aria-expanded="true" aria-controls="hotspotListPanel">Hotspot List</button>
+        </section>
+
+        <aside id="hotspotListPanel" class="hotspot-panel glass" aria-label="Hotspot list"></aside>
+
+        <article id="hotspotCard" class="hotspot-card glass" aria-live="polite" hidden>
+          <p id="hotspotKicker" class="hotspot-kicker"></p>
+          <h2 id="hotspotTitle" class="hotspot-title"></h2>
+          <p id="hotspotBody" class="hotspot-body"></p>
+          <a id="hotspotLink" class="hotspot-link" href="#" target="_blank" rel="noreferrer noopener" hidden>Reference</a>
+          <div id="tourStepper" class="tour-stepper" hidden>
+            <button id="prevStepBtn" class="chip-btn" aria-label="Previous tour step">Previous</button>
+            <p id="tourProgress" class="tour-progress"></p>
+            <button id="nextStepBtn" class="chip-btn" aria-label="Next tour step">Next</button>
+          </div>
+        </article>
+
+        <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
