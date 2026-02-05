@@ -766,6 +766,66 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+.shortcuts-modal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(28, 23, 19, 0.22);
+  z-index: 50;
+}
+
+.shortcuts-card {
+  width: min(480px, calc(100vw - 1.5rem));
+  border-radius: 18px;
+  padding: 0.88rem;
+  box-shadow: var(--shadow);
+}
+
+.shortcuts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.shortcuts-title {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 1rem;
+}
+
+.shortcuts-list {
+  margin-top: 0.66rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.shortcuts-list p {
+  margin: 0;
+  padding: 0.38rem 0.44rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.shortcuts-list kbd {
+  min-width: 2.2rem;
+  text-align: center;
+  border: 1px solid rgba(93, 78, 67, 0.3);
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.72rem;
+  color: var(--ink-strong);
+}
+
 .empty-state {
   margin: 0.72rem 0;
   text-align: center;

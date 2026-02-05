@@ -15,6 +15,7 @@ Minimalist white-space 3D artifact experience with:
 - Tour autoplay + in-session progress restore per artifact
 - Keyboard shortcuts (`T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, arrows for tour steps)
 - Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
+- Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 
 ## Run
 
@@ -34,6 +35,7 @@ npm run preview
 
 - Models are loaded from the Khronos public sample model repository.
 - URLs are updated in place so any current view can be shared directly.
+- Build output is split with a dedicated Three.js vendor chunk for better browser caching.
 
 ## Analytics
 

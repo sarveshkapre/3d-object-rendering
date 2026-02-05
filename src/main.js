@@ -52,6 +52,9 @@ const elements = {
   tourBtn: document.getElementById("tourBtn"),
   compareBtn: document.getElementById("compareBtn"),
   syncBtn: document.getElementById("syncBtn"),
+  shortcutsBtn: document.getElementById("shortcutsBtn"),
+  shortcutsModal: document.getElementById("shortcutsModal"),
+  shortcutsCloseBtn: document.getElementById("shortcutsCloseBtn"),
   fullscreenBtn: document.getElementById("fullscreenBtn"),
   shareBtn: document.getElementById("shareBtn"),
   listToggleBtn: document.getElementById("listToggleBtn"),
@@ -88,6 +91,7 @@ const state = {
   tourAutoPlayTimer: null,
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
+  shortcutsOpen: false,
   previousTourState: {
     active: false,
     index: null
@@ -385,6 +389,20 @@ function bindEvents() {
     });
   });
 
+  elements.shortcutsBtn.addEventListener("click", () => {
+    setShortcutsOpen(!state.shortcutsOpen, { source: "ui" });
+  });
+
+  elements.shortcutsCloseBtn.addEventListener("click", () => {
+    setShortcutsOpen(false, { source: "ui" });
+  });
+
+  elements.shortcutsModal.addEventListener("click", (event) => {
+    if (event.target === elements.shortcutsModal) {
+      setShortcutsOpen(false, { source: "overlay" });
+    }
+  });
+
   elements.listToggleBtn.addEventListener("click", () => {
     setDetailView("hotspots");
   });
@@ -665,6 +683,24 @@ function updateDetailToggleUI() {
   const inHotspotView = state.activeDetailView === "hotspots";
   elements.listToggleBtn.classList.toggle("is-active", inHotspotView);
   elements.storyToggleBtn.classList.toggle("is-active", !inHotspotView);
+}
+
+function setShortcutsOpen(open, options = {}) {
+  state.shortcutsOpen = Boolean(open);
+  elements.shortcutsModal.hidden = !state.shortcutsOpen;
+
+  if (state.shortcutsOpen) {
+    elements.shortcutsCloseBtn.focus();
+  } else {
+    elements.shortcutsBtn.focus();
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("shortcuts_overlay_toggled", {
+      open: state.shortcutsOpen,
+      source: options.source ?? "unknown"
+    });
+  }
 }
 
 function renderFilters() {
@@ -1035,6 +1071,15 @@ function handleViewerCameraChange(source) {
 }
 
 function handleKeydown(event) {
+  if (event.key === "Escape") {
+    if (state.shortcutsOpen) {
+      event.preventDefault();
+      setShortcutsOpen(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_shortcuts" });
+      return;
+    }
+  }
+
   const target = event.target;
   const isTypingTarget =
     target instanceof HTMLInputElement ||
@@ -1043,6 +1088,17 @@ function handleKeydown(event) {
     (target instanceof HTMLElement && target.isContentEditable);
 
   if (isTypingTarget) {
+    return;
+  }
+
+  if (event.key === "?") {
+    event.preventDefault();
+    setShortcutsOpen(!state.shortcutsOpen, { source: "keyboard" });
+    trackEvent("keyboard_shortcut_used", { key: "?", action: "toggle_shortcuts" });
+    return;
+  }
+
+  if (state.shortcutsOpen) {
     return;
   }
 

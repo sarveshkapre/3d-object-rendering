@@ -67,6 +67,7 @@
             <button id="tourBtn" class="icon-btn" title="Start guided tour" aria-label="Start guided tour">Start Tour</button>
             <button id="compareBtn" class="icon-btn" title="Toggle compare mode" aria-label="Toggle compare mode">Compare</button>
             <button id="syncBtn" class="icon-btn" title="Toggle compare sync" aria-label="Toggle compare sync" hidden>Sync On</button>
+            <button id="shortcutsBtn" class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">Shortcuts</button>
             <button id="fullscreenBtn" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">Fullscreen</button>
             <button id="shareBtn" class="icon-btn" title="Copy share link" aria-label="Copy share link">Share</button>
           </div>
@@ -107,6 +108,26 @@
           <p class="panel-label">Compare Against</p>
           <div id="compareArtifactList" class="compare-list"></div>
         </aside>
+
+        <div id="shortcutsModal" class="shortcuts-modal" hidden>
+          <div class="shortcuts-card glass" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+            <div class="shortcuts-head">
+              <h2 id="shortcutsTitle" class="shortcuts-title">Keyboard Shortcuts</h2>
+              <button id="shortcutsCloseBtn" class="chip-btn" type="button" aria-label="Close shortcuts">Close</button>
+            </div>
+            <div class="shortcuts-list">
+              <p><kbd>T</kbd><span>Start or stop tour</span></p>
+              <p><kbd>H</kbd><span>Toggle hotspots</span></p>
+              <p><kbd>C</kbd><span>Toggle compare mode</span></p>
+              <p><kbd>S</kbd><span>Switch Inspect and Story view</span></p>
+              <p><kbd>A</kbd><span>Toggle tour autoplay</span></p>
+              <p><kbd>←</kbd><span>Previous tour step</span></p>
+              <p><kbd>→</kbd><span>Next tour step</span></p>
+              <p><kbd>?</kbd><span>Open or close this panel</span></p>
+              <p><kbd>Esc</kbd><span>Close overlays</span></p>
+            </div>
+          </div>
+        </div>
 
         <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       </main>
