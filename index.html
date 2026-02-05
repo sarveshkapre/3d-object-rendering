@@ -21,17 +21,35 @@
         <div id="galleryList" class="gallery-list" role="listbox" aria-label="Artifacts"></div>
       </aside>
 
-      <main class="stage">
-        <canvas id="viewport" aria-label="3D object viewer"></canvas>
+      <main id="stage" class="stage">
+        <div id="viewerGrid" class="viewer-grid">
+          <section id="primaryPane" class="viewer-pane is-primary" aria-label="Primary artifact viewer">
+            <canvas id="viewport" aria-label="Primary 3D object viewer"></canvas>
 
-        <div id="loadingOverlay" class="loading-overlay">
-          <p id="loadingText" class="loading-text">Preparing artifact…</p>
-          <div class="loading-track" role="progressbar" aria-label="Model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="loadingBar" class="loading-bar"></div>
-          </div>
+            <div id="loadingOverlay" class="loading-overlay">
+              <p id="loadingText" class="loading-text">Preparing artifact…</p>
+              <div class="loading-track" role="progressbar" aria-label="Model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="loadingBar" class="loading-bar"></div>
+              </div>
+            </div>
+
+            <div id="hotspotLayer" class="hotspot-layer" aria-hidden="true"></div>
+          </section>
+
+          <section id="comparePane" class="viewer-pane compare-pane" aria-label="Comparison artifact viewer" aria-hidden="true">
+            <canvas id="viewportCompare" aria-label="Comparison 3D object viewer"></canvas>
+
+            <div id="loadingOverlayCompare" class="loading-overlay">
+              <p id="loadingTextCompare" class="loading-text">Preparing comparison artifact…</p>
+              <div class="loading-track" role="progressbar" aria-label="Comparison model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="loadingBarCompare" class="loading-bar"></div>
+              </div>
+            </div>
+
+            <div id="hotspotLayerCompare" class="hotspot-layer" aria-hidden="true"></div>
+            <p id="comparePaneTitle" class="compare-pane-title"></p>
+          </section>
         </div>
-
-        <div id="hotspotLayer" class="hotspot-layer" aria-hidden="true"></div>
 
         <header class="top-bar">
           <p id="artifactTitle" class="artifact-title"></p>
@@ -39,6 +57,8 @@
             <button id="resetBtn" class="icon-btn" title="Reset view" aria-label="Reset view">Reset</button>
             <button id="hotspotToggleBtn" class="icon-btn" title="Toggle hotspots" aria-label="Toggle hotspots">Hotspots</button>
             <button id="tourBtn" class="icon-btn" title="Start guided tour" aria-label="Start guided tour">Start Tour</button>
+            <button id="compareBtn" class="icon-btn" title="Toggle compare mode" aria-label="Toggle compare mode">Compare</button>
+            <button id="syncBtn" class="icon-btn" title="Toggle compare sync" aria-label="Toggle compare sync" hidden>Sync On</button>
             <button id="fullscreenBtn" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">Fullscreen</button>
             <button id="shareBtn" class="icon-btn" title="Copy share link" aria-label="Copy share link">Share</button>
           </div>
@@ -62,6 +82,11 @@
             <button id="nextStepBtn" class="chip-btn" aria-label="Next tour step">Next</button>
           </div>
         </article>
+
+        <aside id="compareHud" class="compare-hud glass" hidden>
+          <p class="panel-label">Compare Against</p>
+          <div id="compareArtifactList" class="compare-list"></div>
+        </aside>
 
         <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       </main>

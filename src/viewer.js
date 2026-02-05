@@ -47,7 +47,7 @@ export class ArtifactViewer {
     this.controls.minDistance = 0.4;
     this.controls.maxDistance = 25;
     this.controls.addEventListener("change", () => {
-      this.callbacks.onCameraChange?.();
+      this._notifyCameraChange();
     });
 
     this.clock = new THREE.Clock();
@@ -76,10 +76,18 @@ export class ArtifactViewer {
     this.tourIndex = 0;
 
     this.cameraAnimation = null;
+    this.cameraEventMuted = false;
 
     this._initLighting();
     this._initGroundShadow();
     this._animate();
+  }
+
+  _notifyCameraChange() {
+    if (this.cameraEventMuted) {
+      return;
+    }
+    this.callbacks.onCameraChange?.();
   }
 
   _initLighting() {
@@ -334,7 +342,7 @@ export class ArtifactViewer {
       tourCaption
     });
 
-    this.callbacks.onCameraChange?.();
+    this._notifyCameraChange();
   }
 
   focusHotspot(hotspotId, options = {}) {
@@ -414,7 +422,7 @@ export class ArtifactViewer {
       caption: step.caption
     });
 
-    this.callbacks.onCameraChange?.();
+    this._notifyCameraChange();
   }
 
   nextTourStep() {
@@ -430,7 +438,7 @@ export class ArtifactViewer {
       this.camera.position.copy(this.defaultView.position);
       this.controls.target.copy(this.defaultView.target);
       this.controls.update();
-      this.callbacks.onCameraChange?.();
+      this._notifyCameraChange();
       return;
     }
 
@@ -448,7 +456,7 @@ export class ArtifactViewer {
     };
   }
 
-  applyCameraPose(pose) {
+  applyCameraPose(pose, options = {}) {
     if (!pose) {
       return;
     }
@@ -464,10 +472,15 @@ export class ArtifactViewer {
       return;
     }
 
+    const emitCameraChange = options.emitCameraChange !== false;
+    this.cameraEventMuted = !emitCameraChange;
     this.camera.position.set(position[0], position[1], position[2]);
     this.controls.target.set(target[0], target[1], target[2]);
     this.controls.update();
-    this.callbacks.onCameraChange?.();
+    this.cameraEventMuted = false;
+    if (emitCameraChange) {
+      this._notifyCameraChange();
+    }
   }
 
   getCameraPose() {
@@ -486,9 +499,11 @@ export class ArtifactViewer {
   }
 
   resize(width, height) {
-    this.camera.aspect = width / height;
+    const safeWidth = Math.max(1, width);
+    const safeHeight = Math.max(1, height);
+    this.camera.aspect = safeWidth / safeHeight;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, false);
+    this.renderer.setSize(safeWidth, safeHeight, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   }
 
@@ -507,7 +522,7 @@ export class ArtifactViewer {
 
     if (progress >= 1) {
       this.cameraAnimation = null;
-      this.callbacks.onCameraChange?.();
+      this._notifyCameraChange();
     }
   }
 

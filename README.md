@@ -6,7 +6,8 @@ Minimalist white-space 3D artifact experience with:
 - Rotate/zoom interaction with smooth orbit controls
 - 3D-anchored hotspots with occlusion fade
 - Guided narrative tour with cinematic camera moves
-- Deep-link sharing (`artifact`, `hotspot`, `tour`, `cam`)
+- Side-by-side compare mode with synchronized camera control
+- Deep-link sharing (`artifact`, `hotspot`, `tour`, `cam`, `compare`, `sync`)
 - Artifact library with category filters
 
 ## Run

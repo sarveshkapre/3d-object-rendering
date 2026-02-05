@@ -3,13 +3,23 @@ import { artifacts, artifactMap, categories } from "./data/artifacts.js";
 import { ArtifactViewer } from "./viewer.js";
 
 const elements = {
+  stage: document.getElementById("stage"),
   canvas: document.getElementById("viewport"),
+  canvasCompare: document.getElementById("viewportCompare"),
+  hotspotLayer: document.getElementById("hotspotLayer"),
+  hotspotLayerCompare: document.getElementById("hotspotLayerCompare"),
   loadingOverlay: document.getElementById("loadingOverlay"),
   loadingBar: document.getElementById("loadingBar"),
   loadingText: document.getElementById("loadingText"),
-  hotspotLayer: document.getElementById("hotspotLayer"),
+  loadingOverlayCompare: document.getElementById("loadingOverlayCompare"),
+  loadingBarCompare: document.getElementById("loadingBarCompare"),
+  loadingTextCompare: document.getElementById("loadingTextCompare"),
   filterBar: document.getElementById("filterBar"),
   galleryList: document.getElementById("galleryList"),
+  comparePane: document.getElementById("comparePane"),
+  comparePaneTitle: document.getElementById("comparePaneTitle"),
+  compareHud: document.getElementById("compareHud"),
+  compareArtifactList: document.getElementById("compareArtifactList"),
   artifactTitle: document.getElementById("artifactTitle"),
   artifactHook: document.getElementById("artifactHook"),
   hotspotListPanel: document.getElementById("hotspotListPanel"),
@@ -25,15 +35,23 @@ const elements = {
   resetBtn: document.getElementById("resetBtn"),
   hotspotToggleBtn: document.getElementById("hotspotToggleBtn"),
   tourBtn: document.getElementById("tourBtn"),
+  compareBtn: document.getElementById("compareBtn"),
+  syncBtn: document.getElementById("syncBtn"),
   fullscreenBtn: document.getElementById("fullscreenBtn"),
   shareBtn: document.getElementById("shareBtn"),
   listToggleBtn: document.getElementById("listToggleBtn"),
   toast: document.getElementById("toast")
 };
 
+const parsedUrlState = parseUrlState();
+
 const state = {
   currentCategory: "all",
   currentArtifactId: null,
+  compareArtifactId: getInitialCompareArtifactId(parsedUrlState.compareArtifactId),
+  compareEnabled: parsedUrlState.compareEnabled,
+  compareSync: parsedUrlState.compareSync,
+  compareReady: false,
   hotspotData: [],
   selectedHotspot: null,
   tourActive: false,
@@ -42,18 +60,20 @@ const state = {
   tourCaption: "",
   urlUpdateTimer: null,
   toastTimer: null,
-  loading: false,
-  pendingState: parseUrlState()
+  pendingState: parsedUrlState,
+  cameraSyncLock: false,
+  primaryLoading: false,
+  compareLoading: false
 };
 
-const viewer = new ArtifactViewer({
+const primaryViewer = new ArtifactViewer({
   canvas: elements.canvas,
   hotspotLayer: elements.hotspotLayer,
   callbacks: {
     onLoadProgress: (value) => {
       const progress = Math.round(Math.max(0, Math.min(100, value * 100)));
       elements.loadingBar.style.width = `${progress}%`;
-      elements.loadingText.textContent = progress < 100 ? `Streaming geometry ${progress}%` : "Finalizing artifact…";
+      elements.loadingText.textContent = progress < 100 ? `Streaming geometry ${progress}%` : "Finalizing artifact...";
     },
     onArtifactLoad: ({ artifact }) => {
       elements.artifactTitle.textContent = artifact.title;
@@ -61,6 +81,7 @@ const viewer = new ArtifactViewer({
       state.selectedHotspot = null;
       renderHotspotList();
       updateHeaderControls();
+      renderCompareList();
     },
     onHotspotData: (hotspots) => {
       state.hotspotData = hotspots;
@@ -91,50 +112,120 @@ const viewer = new ArtifactViewer({
       scheduleUrlUpdate();
     },
     onCameraChange: () => {
-      scheduleUrlUpdate();
+      handleViewerCameraChange("primary");
     }
   }
 });
+
+const compareViewer = new ArtifactViewer({
+  canvas: elements.canvasCompare,
+  hotspotLayer: elements.hotspotLayerCompare,
+  callbacks: {
+    onLoadProgress: (value) => {
+      const progress = Math.round(Math.max(0, Math.min(100, value * 100)));
+      elements.loadingBarCompare.style.width = `${progress}%`;
+      elements.loadingTextCompare.textContent = progress < 100 ? `Streaming geometry ${progress}%` : "Finalizing artifact...";
+    },
+    onArtifactLoad: ({ artifact }) => {
+      elements.comparePaneTitle.textContent = artifact.title;
+    },
+    onCameraChange: () => {
+      handleViewerCameraChange("compare");
+    }
+  }
+});
+
+compareViewer.setHotspotVisibility(false);
 
 initialize();
 
 function initialize() {
   renderFilters();
   renderGallery();
+  renderCompareList();
   bindEvents();
+  setCompareModeUI(state.compareEnabled);
 
   const fallbackArtifactId = artifacts[0].id;
   const artifactId = artifactMap.has(state.pendingState.artifactId)
     ? state.pendingState.artifactId
     : fallbackArtifactId;
 
-  loadArtifact(artifactId, { restoreFromUrl: true });
   handleResize();
+  void bootstrap(artifactId);
+}
+
+async function bootstrap(artifactId) {
+  await loadArtifact(artifactId, { restoreFromUrl: true, skipCompareReload: true });
+
+  if (!state.compareEnabled) {
+    return;
+  }
+
+  ensureValidCompareArtifact();
+  await loadCompareArtifact(state.compareArtifactId, {
+    syncFromPrimary: true
+  });
 }
 
 function bindEvents() {
   window.addEventListener("resize", handleResize);
 
   elements.resetBtn.addEventListener("click", () => {
-    viewer.resetView();
+    primaryViewer.resetView();
+    if (state.compareEnabled && state.compareReady && !state.compareSync) {
+      compareViewer.resetView();
+    }
     showToast("Camera reset");
   });
 
   elements.hotspotToggleBtn.addEventListener("click", () => {
-    viewer.toggleHotspots();
+    primaryViewer.toggleHotspots();
   });
 
   elements.tourBtn.addEventListener("click", () => {
     if (state.tourActive) {
-      viewer.stopTour();
+      primaryViewer.stopTour();
       showToast("Tour paused");
       return;
     }
-    viewer.startTour(0);
+    primaryViewer.startTour(0);
   });
 
-  elements.prevStepBtn.addEventListener("click", () => viewer.previousTourStep());
-  elements.nextStepBtn.addEventListener("click", () => viewer.nextTourStep());
+  elements.compareBtn.addEventListener("click", async () => {
+    if (state.compareEnabled) {
+      state.compareEnabled = false;
+      state.compareReady = false;
+      setCompareModeUI(false);
+      scheduleUrlUpdate();
+      return;
+    }
+
+    state.compareEnabled = true;
+    state.compareSync = true;
+    ensureValidCompareArtifact();
+    setCompareModeUI(true);
+    await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true });
+    scheduleUrlUpdate();
+  });
+
+  elements.syncBtn.addEventListener("click", () => {
+    if (!state.compareEnabled) {
+      return;
+    }
+
+    state.compareSync = !state.compareSync;
+    updateHeaderControls();
+
+    if (state.compareSync && state.compareReady) {
+      compareViewer.applyCameraPose(primaryViewer.getCameraPose(), { emitCameraChange: false });
+    }
+
+    scheduleUrlUpdate();
+  });
+
+  elements.prevStepBtn.addEventListener("click", () => primaryViewer.previousTourStep());
+  elements.nextStepBtn.addEventListener("click", () => primaryViewer.nextTourStep());
 
   elements.listToggleBtn.addEventListener("click", () => {
     const willShow = elements.hotspotListPanel.classList.toggle("is-collapsed") === false;
@@ -180,10 +271,11 @@ async function loadArtifact(artifactId, options = {}) {
   state.tourActive = false;
 
   renderGallery();
-  setLoadingState(true);
+  renderCompareList();
+  setPrimaryLoading(true);
 
   try {
-    await viewer.loadArtifact(artifact);
+    await primaryViewer.loadArtifact(artifact);
 
     if (options.restoreFromUrl) {
       restoreFromUrlState();
@@ -191,13 +283,21 @@ async function loadArtifact(artifactId, options = {}) {
         artifactId: state.currentArtifactId,
         hotspotId: null,
         tourStep: null,
-        cameraPose: null
+        cameraPose: null,
+        compareArtifactId: state.compareArtifactId,
+        compareEnabled: state.compareEnabled,
+        compareSync: state.compareSync
       };
     } else {
       const first = state.hotspotData[0];
       if (first) {
-        viewer.selectHotspot(first.id, { focus: false });
+        primaryViewer.selectHotspot(first.id, { focus: false });
       }
+    }
+
+    if (state.compareEnabled && !options.skipCompareReload) {
+      ensureValidCompareArtifact();
+      await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true });
     }
 
     renderHotspotCard();
@@ -207,7 +307,51 @@ async function loadArtifact(artifactId, options = {}) {
     showToast("Model failed to load. Try another artifact.");
     console.error(error);
   } finally {
-    window.setTimeout(() => setLoadingState(false), 220);
+    window.setTimeout(() => setPrimaryLoading(false), 220);
+  }
+}
+
+async function loadCompareArtifact(artifactId, options = {}) {
+  if (!state.compareEnabled) {
+    return;
+  }
+
+  const artifact = artifactMap.get(artifactId);
+  if (!artifact) {
+    return;
+  }
+
+  state.compareArtifactId = artifactId;
+  state.compareReady = false;
+  renderCompareList();
+  setCompareLoading(true);
+
+  try {
+    await compareViewer.loadArtifact(artifact);
+    compareViewer.setHotspotVisibility(false);
+    state.compareReady = true;
+
+    if (options.syncFromPrimary && state.compareSync) {
+      compareViewer.applyCameraPose(primaryViewer.getCameraPose(), { emitCameraChange: false });
+    }
+
+    scheduleUrlUpdate();
+  } catch (error) {
+    showToast("Comparison artifact failed to load.");
+    console.error(error);
+  } finally {
+    window.setTimeout(() => setCompareLoading(false), 220);
+  }
+}
+
+function ensureValidCompareArtifact() {
+  if (!state.currentArtifactId) {
+    return;
+  }
+
+  if (!artifactMap.has(state.compareArtifactId) || state.compareArtifactId === state.currentArtifactId) {
+    const alternative = artifacts.find((artifact) => artifact.id !== state.currentArtifactId);
+    state.compareArtifactId = alternative?.id ?? state.currentArtifactId;
   }
 }
 
@@ -215,22 +359,22 @@ function restoreFromUrlState() {
   const { hotspotId, tourStep, cameraPose } = state.pendingState;
 
   if (cameraPose) {
-    viewer.applyCameraPose(cameraPose);
+    primaryViewer.applyCameraPose(cameraPose);
   }
 
   if (Number.isInteger(tourStep)) {
-    viewer.startTour(tourStep);
+    primaryViewer.startTour(tourStep);
     return;
   }
 
   if (hotspotId) {
-    viewer.selectHotspot(hotspotId, { focus: true });
+    primaryViewer.selectHotspot(hotspotId, { focus: true });
     return;
   }
 
   const first = state.hotspotData[0];
   if (first) {
-    viewer.selectHotspot(first.id, { focus: false });
+    primaryViewer.selectHotspot(first.id, { focus: false });
   }
 }
 
@@ -277,10 +421,37 @@ function renderGallery() {
     `;
 
     button.addEventListener("click", () => {
-      loadArtifact(artifact.id, { restoreFromUrl: false });
+      void loadArtifact(artifact.id, { restoreFromUrl: false });
     });
 
     elements.galleryList.appendChild(button);
+  });
+}
+
+function renderCompareList() {
+  elements.compareArtifactList.innerHTML = "";
+
+  artifacts.forEach((artifact) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "compare-chip";
+    button.textContent = artifact.title;
+
+    const isPrimaryArtifact = artifact.id === state.currentArtifactId;
+    const isSelected = artifact.id === state.compareArtifactId;
+
+    button.classList.toggle("is-primary", isPrimaryArtifact);
+    button.classList.toggle("is-active", isSelected);
+    button.disabled = isPrimaryArtifact;
+
+    button.addEventListener("click", async () => {
+      if (!state.compareEnabled || artifact.id === state.currentArtifactId) {
+        return;
+      }
+      await loadCompareArtifact(artifact.id, { syncFromPrimary: true });
+    });
+
+    elements.compareArtifactList.appendChild(button);
   });
 }
 
@@ -316,7 +487,7 @@ function renderHotspotList() {
   elements.hotspotListPanel.querySelectorAll("[data-hotspot-id]").forEach((button) => {
     button.addEventListener("click", () => {
       const hotspotId = button.dataset.hotspotId;
-      viewer.selectHotspot(hotspotId, { focus: true });
+      primaryViewer.selectHotspot(hotspotId, { focus: true });
     });
   });
 }
@@ -353,16 +524,51 @@ function renderHotspotCard() {
 
 function updateHeaderControls() {
   elements.tourBtn.textContent = state.tourActive ? "Exit Tour" : "Start Tour";
-  elements.hotspotToggleBtn.textContent = viewer.hotspotsEnabled ? "Hide Hotspots" : "Show Hotspots";
+  elements.hotspotToggleBtn.textContent = primaryViewer.hotspotsEnabled ? "Hide Hotspots" : "Show Hotspots";
+  elements.compareBtn.textContent = state.compareEnabled ? "Exit Compare" : "Compare";
+  elements.syncBtn.hidden = !state.compareEnabled;
+  elements.syncBtn.textContent = state.compareSync ? "Sync On" : "Sync Off";
 }
 
-function setLoadingState(loading) {
-  state.loading = loading;
+function setCompareModeUI(enabled) {
+  elements.stage.classList.toggle("is-compare", enabled);
+  elements.comparePane.setAttribute("aria-hidden", String(!enabled));
+  elements.compareHud.hidden = !enabled;
+  updateHeaderControls();
+  handleResize();
+}
+
+function setPrimaryLoading(loading) {
+  state.primaryLoading = loading;
   elements.loadingOverlay.classList.toggle("is-visible", loading);
   elements.loadingOverlay.setAttribute("aria-hidden", String(!loading));
   if (loading) {
     elements.loadingBar.style.width = "2%";
   }
+}
+
+function setCompareLoading(loading) {
+  state.compareLoading = loading;
+  elements.loadingOverlayCompare.classList.toggle("is-visible", loading);
+  elements.loadingOverlayCompare.setAttribute("aria-hidden", String(!loading));
+  if (loading) {
+    elements.loadingBarCompare.style.width = "2%";
+  }
+}
+
+function handleViewerCameraChange(source) {
+  scheduleUrlUpdate();
+
+  if (!state.compareEnabled || !state.compareSync || !state.compareReady || state.cameraSyncLock) {
+    return;
+  }
+
+  const sourceViewer = source === "primary" ? primaryViewer : compareViewer;
+  const targetViewer = source === "primary" ? compareViewer : primaryViewer;
+
+  state.cameraSyncLock = true;
+  targetViewer.applyCameraPose(sourceViewer.getCameraPose(), { emitCameraChange: false });
+  state.cameraSyncLock = false;
 }
 
 function showToast(message) {
@@ -380,9 +586,8 @@ function showToast(message) {
 }
 
 function handleResize() {
-  const width = elements.canvas.clientWidth;
-  const height = elements.canvas.clientHeight;
-  viewer.resize(width, height);
+  primaryViewer.resize(elements.canvas.clientWidth, elements.canvas.clientHeight);
+  compareViewer.resize(elements.canvasCompare.clientWidth, elements.canvasCompare.clientHeight);
 }
 
 function scheduleUrlUpdate() {
@@ -406,8 +611,13 @@ function updateUrlState() {
     params.set("tour", String(state.tourIndex));
   }
 
-  const cameraPose = viewer.getCameraPose();
+  const cameraPose = primaryViewer.getCameraPose();
   params.set("cam", serializeCameraPose(cameraPose));
+
+  if (state.compareEnabled && state.compareArtifactId) {
+    params.set("compare", state.compareArtifactId);
+    params.set("sync", state.compareSync ? "1" : "0");
+  }
 
   const nextUrl = `${window.location.pathname}?${params.toString()}`;
   window.history.replaceState({}, "", nextUrl);
@@ -444,11 +654,27 @@ function parseUrlState() {
   const tourStepRaw = params.get("tour");
   const tourStep = tourStepRaw === null ? null : Number(tourStepRaw);
   const cameraPose = parseCameraPose(params.get("cam"));
+  const compareArtifactId = params.get("compare");
 
   return {
     artifactId,
     hotspotId,
     tourStep: Number.isInteger(tourStep) ? tourStep : null,
-    cameraPose
+    cameraPose,
+    compareArtifactId,
+    compareEnabled: Boolean(compareArtifactId && artifactMap.has(compareArtifactId)),
+    compareSync: params.get("sync") !== "0"
   };
+}
+
+function getInitialCompareArtifactId(parsedCompareArtifactId) {
+  if (parsedCompareArtifactId && artifactMap.has(parsedCompareArtifactId)) {
+    return parsedCompareArtifactId;
+  }
+
+  if (artifacts.length > 1) {
+    return artifacts[1].id;
+  }
+
+  return artifacts[0]?.id ?? null;
 }

@@ -138,7 +138,43 @@ body {
   overflow: hidden;
 }
 
-#viewport {
+.viewer-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  transition: grid-template-columns 260ms ease;
+}
+
+.stage.is-compare .viewer-grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.viewer-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.compare-pane {
+  display: none;
+  border-left: 1px solid var(--line);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(24px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.stage.is-compare .compare-pane {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+#viewport,
+#viewportCompare {
   width: 100%;
   height: 100%;
   display: block;
@@ -209,6 +245,7 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   pointer-events: none;
+  z-index: 24;
 }
 
 .artifact-title {
@@ -265,6 +302,7 @@ body {
   justify-content: space-between;
   gap: 0.8rem;
   pointer-events: none;
+  z-index: 22;
 }
 
 .artifact-hook {
@@ -295,6 +333,7 @@ body {
   padding: 0.76rem;
   overflow: auto;
   transition: transform 220ms ease, opacity 220ms ease;
+  z-index: 26;
 }
 
 .hotspot-panel.is-collapsed {
@@ -361,6 +400,7 @@ body {
   box-shadow: var(--shadow);
   padding: 0.84rem 0.88rem 0.76rem;
   animation: panelRise 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 25;
 }
 
 .hotspot-kicker {
@@ -449,6 +489,61 @@ body {
   transition: width 130ms linear;
 }
 
+.compare-pane-title {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  margin: 0;
+  font-family: "Fraunces", serif;
+  color: var(--ink-strong);
+  font-size: clamp(0.95rem, 1.25vw, 1.2rem);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+.compare-hud {
+  position: absolute;
+  top: 4.9rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, 52vw);
+  border-radius: 16px;
+  padding: 0.74rem;
+  box-shadow: var(--shadow);
+  z-index: 26;
+}
+
+.compare-list {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.compare-chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.42rem 0.72rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.compare-chip.is-active {
+  border-color: rgba(184, 106, 59, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(184, 106, 59, 0.2);
+}
+
+.compare-chip.is-primary {
+  opacity: 0.48;
+}
+
+.compare-chip:disabled {
+  cursor: not-allowed;
+}
+
 .toast {
   position: absolute;
   left: 50%;
@@ -461,6 +556,7 @@ body {
   padding: 0.54rem 0.82rem;
   opacity: 0;
   transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 40;
 }
 
 .toast.is-visible {
@@ -503,6 +599,17 @@ body {
     max-height: 42vh;
   }
 
+  .compare-hud {
+    top: auto;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 9rem;
+    transform: none;
+    width: auto;
+    max-height: 34vh;
+    overflow: auto;
+  }
+
   .hotspot-card {
     left: 0.75rem;
     top: auto;
@@ -540,6 +647,23 @@ body {
     font-size: 0.8rem;
     border-radius: 12px;
   }
+
+  .stage.is-compare .viewer-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .compare-pane {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    transform: translateY(14px);
+  }
+
+  .compare-pane-title {
+    top: 0.75rem;
+    left: 0.75rem;
+    font-size: 0.95rem;
+  }
 }
 
 @media (max-width: 720px) {
@@ -571,6 +695,12 @@ body {
     width: calc(100vw - 1rem);
     left: 0.5rem;
     right: 0.5rem;
+  }
+
+  .compare-hud {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 9.2rem;
   }
 }
 
