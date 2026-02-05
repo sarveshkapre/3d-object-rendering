@@ -4,6 +4,7 @@ import { createAnalyticsTracker } from "./analytics.js";
 import { ArtifactViewer } from "./viewer.js";
 
 const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
+const SESSION_METRICS_STORAGE_KEY = "artifact_viewer_metrics";
 const TOUR_AUTOPLAY_DELAY_MS = 4600;
 
 const elements = {
@@ -21,6 +22,8 @@ const elements = {
   searchInput: document.getElementById("artifactSearchInput"),
   filterBar: document.getElementById("filterBar"),
   galleryList: document.getElementById("galleryList"),
+  insightsPanel: document.getElementById("insightsPanel"),
+  insightsContent: document.getElementById("insightsContent"),
   comparePane: document.getElementById("comparePane"),
   comparePaneTitle: document.getElementById("comparePaneTitle"),
   compareHud: document.getElementById("compareHud"),
@@ -84,6 +87,7 @@ const state = {
   tourAutoPlay: parsedUrlState.tourAutoPlay,
   tourAutoPlayTimer: null,
   sessionProgress: loadSessionProgress(),
+  sessionMetrics: loadSessionMetrics(),
   previousTourState: {
     active: false,
     index: null
@@ -112,6 +116,7 @@ const primaryViewer = new ArtifactViewer({
       renderHotspotList();
       renderGallery();
       renderCompareList();
+      renderInsightsPanel();
       updateHeaderControls();
       trackEvent("artifact_viewed", {
         artifactId: artifact.id,
@@ -236,6 +241,7 @@ const compareViewer = new ArtifactViewer({
     onArtifactLoad: ({ artifact }) => {
       elements.comparePaneTitle.textContent = artifact.title;
       trackEvent("compare_artifact_viewed", {
+        artifactId: artifact.id,
         primaryArtifactId: state.currentArtifactId,
         compareArtifactId: artifact.id
       });
@@ -263,6 +269,7 @@ function initialize() {
   renderFilters();
   renderGallery();
   renderCompareList();
+  renderInsightsPanel();
   bindEvents();
   setDetailView(state.activeDetailView, { skipUrlUpdate: true });
   setCompareModeUI(state.compareEnabled);
@@ -829,6 +836,65 @@ function renderStoryPanel() {
   `;
 }
 
+function renderInsightsPanel() {
+  if (!state.currentArtifactId) {
+    elements.insightsContent.innerHTML = '<p class="insights-empty">Load an artifact to start session insights.</p>';
+    return;
+  }
+
+  const artifact = artifactMap.get(state.currentArtifactId);
+  const artifactMetrics = getArtifactMetrics(state.currentArtifactId);
+  const hotspotEntries = Object.entries(artifactMetrics.hotspotCounts ?? {});
+  const topHotspots = hotspotEntries
+    .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+    .slice(0, 3)
+    .map(([hotspotId, count]) => {
+      const hotspot = artifact?.hotspots?.find((item) => item.id === hotspotId);
+      return {
+        label: hotspot?.label ?? hotspotId,
+        count
+      };
+    });
+
+  const metricItems = [
+    { label: "Views", value: artifactMetrics.views },
+    { label: "Hotspot Opens", value: artifactMetrics.hotspotOpens },
+    { label: "Tour Starts", value: artifactMetrics.tourStarts },
+    { label: "Tour Last Step", value: artifactMetrics.tourLastStepReached },
+    { label: "Shares", value: artifactMetrics.shares }
+  ];
+
+  const topHotspotMarkup = topHotspots.length
+    ? topHotspots
+        .map(
+          (entry) => `
+            <li class="insights-top-item">
+              <span>${escapeHtml(entry.label)}</span>
+              <strong>${entry.count}</strong>
+            </li>
+          `
+        )
+        .join("")
+    : '<li class="insights-top-item is-empty"><span>No hotspot interactions yet</span><strong>0</strong></li>';
+
+  elements.insightsContent.innerHTML = `
+    <div class="insights-grid">
+      ${metricItems
+        .map(
+          (item) => `
+            <div class="insight-chip">
+              <span class="insight-label">${escapeHtml(item.label)}</span>
+              <strong class="insight-value">${item.value}</strong>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+    <p class="insights-top-label">Top Hotspots</p>
+    <ol class="insights-top-list">${topHotspotMarkup}</ol>
+  `;
+}
+
 function renderHotspotCard() {
   const artifact = artifactMap.get(state.currentArtifactId);
   const hotspot = state.selectedHotspot;
@@ -1204,6 +1270,101 @@ function persistSessionProgress(progress) {
   }
 }
 
+function loadSessionMetrics() {
+  const fallback = {
+    startedAt: Date.now(),
+    artifacts: {}
+  };
+
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_METRICS_STORAGE_KEY);
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return fallback;
+    }
+
+    return {
+      startedAt: Number(parsed.startedAt) || fallback.startedAt,
+      artifacts: typeof parsed.artifacts === "object" && parsed.artifacts ? parsed.artifacts : {}
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistSessionMetrics(metrics) {
+  try {
+    window.sessionStorage.setItem(SESSION_METRICS_STORAGE_KEY, JSON.stringify(metrics));
+  } catch {
+    // Ignore storage quota and availability failures.
+  }
+}
+
+function getArtifactMetrics(artifactId) {
+  if (!artifactId) {
+    return {
+      views: 0,
+      hotspotOpens: 0,
+      tourStarts: 0,
+      tourLastStepReached: 0,
+      shares: 0,
+      compareViews: 0,
+      hotspotCounts: {}
+    };
+  }
+
+  return (
+    state.sessionMetrics.artifacts[artifactId] ?? {
+      views: 0,
+      hotspotOpens: 0,
+      tourStarts: 0,
+      tourLastStepReached: 0,
+      shares: 0,
+      compareViews: 0,
+      hotspotCounts: {}
+    }
+  );
+}
+
+function updateSessionMetrics(eventName, details = {}) {
+  const artifactId = details.artifactId;
+  if (!artifactId || !artifactMap.has(artifactId)) {
+    return;
+  }
+
+  const metrics = getArtifactMetrics(artifactId);
+
+  if (eventName === "artifact_viewed") {
+    metrics.views += 1;
+  } else if (eventName === "hotspot_opened") {
+    metrics.hotspotOpens += 1;
+    if (details.hotspotId) {
+      metrics.hotspotCounts[details.hotspotId] = (metrics.hotspotCounts[details.hotspotId] ?? 0) + 1;
+    }
+  } else if (eventName === "tour_started") {
+    metrics.tourStarts += 1;
+  } else if (eventName === "tour_last_step_reached") {
+    metrics.tourLastStepReached += 1;
+  } else if (eventName === "share_link_copied") {
+    metrics.shares += 1;
+  } else if (eventName === "compare_artifact_viewed") {
+    metrics.compareViews += 1;
+  } else {
+    return;
+  }
+
+  state.sessionMetrics.artifacts[artifactId] = metrics;
+  persistSessionMetrics(state.sessionMetrics);
+
+  if (artifactId === state.currentArtifactId) {
+    renderInsightsPanel();
+  }
+}
+
 function getVisibleArtifacts() {
   const query = state.searchQuery.trim().toLowerCase();
 
@@ -1232,6 +1393,12 @@ function getVisibleArtifacts() {
 }
 
 function trackEvent(eventName, payload = {}) {
+  const artifactId = payload.artifactId ?? state.currentArtifactId;
+  updateSessionMetrics(eventName, {
+    artifactId,
+    hotspotId: payload.hotspotId ?? null
+  });
+
   analytics.track(eventName, {
     artifactId: state.currentArtifactId,
     compareArtifactId: state.compareEnabled ? state.compareArtifactId : null,

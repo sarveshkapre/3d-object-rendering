@@ -14,6 +14,7 @@ Minimalist white-space 3D artifact experience with:
 - Event analytics pipeline (batched client events with optional backend endpoint)
 - Tour autoplay + in-session progress restore per artifact
 - Keyboard shortcuts (`T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, arrows for tour steps)
+- Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
 
 ## Run
 
