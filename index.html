@@ -17,6 +17,10 @@
         <p class="panel-label">Collection</p>
         <h1 class="brand-title">Artifact Viewer</h1>
         <p class="brand-subtitle">Museum-grade 3D storytelling in a pure canvas space.</p>
+        <label class="search-shell" for="artifactSearchInput">
+          <span class="search-label">Search</span>
+          <input id="artifactSearchInput" class="search-input" type="search" placeholder="Find by name, material, or story..." autocomplete="off" />
+        </label>
         <div id="filterBar" class="filter-bar" role="tablist" aria-label="Artifact categories"></div>
         <div id="galleryList" class="gallery-list" role="listbox" aria-label="Artifacts"></div>
       </aside>
@@ -66,10 +70,21 @@
 
         <section class="meta-row">
           <p id="artifactHook" class="artifact-hook"></p>
-          <button id="listToggleBtn" class="chip-btn" aria-expanded="true" aria-controls="hotspotListPanel">Hotspot List</button>
+          <div class="meta-actions">
+            <button id="listToggleBtn" class="chip-btn" aria-controls="hotspotListPanel">Inspect</button>
+            <button id="storyToggleBtn" class="chip-btn" aria-controls="storyPanel">Story</button>
+          </div>
         </section>
 
         <aside id="hotspotListPanel" class="hotspot-panel glass" aria-label="Hotspot list"></aside>
+
+        <aside id="storyPanel" class="story-panel glass" aria-label="Artifact story" hidden>
+          <p id="storyKicker" class="panel-label"></p>
+          <h2 id="storyTitle" class="story-title"></h2>
+          <p id="storySummary" class="story-summary"></p>
+          <div id="storyBody" class="story-body"></div>
+          <div id="storyReferences" class="story-references"></div>
+        </aside>
 
         <article id="hotspotCard" class="hotspot-card glass" aria-live="polite" hidden>
           <p id="hotspotKicker" class="hotspot-kicker"></p>

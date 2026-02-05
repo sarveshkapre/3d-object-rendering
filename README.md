@@ -7,7 +7,9 @@ Minimalist white-space 3D artifact experience with:
 - 3D-anchored hotspots with occlusion fade
 - Guided narrative tour with cinematic camera moves
 - Side-by-side compare mode with synchronized camera control
-- Deep-link sharing (`artifact`, `hotspot`, `tour`, `cam`, `compare`, `sync`)
+- Artifact search across names, categories, tags, and story metadata
+- Story panel per artifact (curated narrative + references)
+- Deep-link sharing (`artifact`, `hotspot`, `tour`, `cam`, `compare`, `sync`, `q`, `view`)
 - Artifact library with category filters
 
 ## Run

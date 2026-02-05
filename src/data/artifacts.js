@@ -11,6 +11,20 @@ export const artifacts = [
     title: "Temple Sentinel Relic",
     hook: "A weathered guardian fragment inspired by South Asian stone monument craftsmanship.",
     category: "heritage",
+    keywords: ["temple", "stone", "carving", "relic", "architecture", "heritage"],
+    story: {
+      title: "Stone Memory and Sacred Geometry",
+      summary: "This object is presented as a monument fragment to study rhythm, weathering, and structural storytelling in carved stone traditions.",
+      body: [
+        "Temple architecture often operates as narrative sculpture. Surfaces are not merely decorative; they encode cosmology, regional craft habits, and historical repair marks.",
+        "The ridged crown and frontal plane in this artifact mimic the compositional pattern used in many monumental facades: a dominant symbolic center with repeated edge details that guide visual movement.",
+        "Weathering is preserved intentionally in this presentation. Pits, erosion, and discoloration act as archival traces that help viewers read material age, climate exposure, and restoration decisions over time."
+      ],
+      references: [
+        { label: "Indian Architecture Overview", url: "https://en.wikipedia.org/wiki/Indian_architecture" },
+        { label: "Temple Architecture in India", url: "https://en.wikipedia.org/wiki/Indian_temple_architecture" }
+      ]
+    },
     modelUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
     modelRotation: [0, Math.PI * 1.2, 0],
@@ -80,6 +94,20 @@ export const artifacts = [
     title: "Heritage Optical Camera",
     hook: "An instrument-scale study of machining, control ergonomics, and analog optical storytelling.",
     category: "engineering",
+    keywords: ["camera", "optics", "lens", "analog", "engineering", "machining"],
+    story: {
+      title: "Precision as a User Interface",
+      summary: "The camera is framed as a mechanical ecosystem where optics, tactile controls, and serviceability define reliability in the field.",
+      body: [
+        "Before digital abstraction, image quality depended on direct physical interaction with the instrument. Focus rings, shutter paths, and framing windows were all user-facing mechanical decisions.",
+        "This artifact highlights the relationship between tolerance and trust. The lens stack controls light behavior while trigger and damping mechanisms reduce vibration that can blur long exposures.",
+        "The rear service plate and base mount reveal maintainability priorities. Precision products survive because they can be calibrated, repaired, and stabilized without compromising optical alignment."
+      ],
+      references: [
+        { label: "Camera Fundamentals", url: "https://en.wikipedia.org/wiki/Camera" },
+        { label: "Lens Design Principles", url: "https://en.wikipedia.org/wiki/Camera_lens" }
+      ]
+    },
     modelUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/AntiqueCamera/glTF-Binary/AntiqueCamera.glb",
     modelRotation: [0, Math.PI * 0.75, 0],
@@ -149,6 +177,20 @@ export const artifacts = [
     title: "Ritual Lantern",
     hook: "A luminous object study balancing metalwork ornament, glass diffusion, and ceremonial function.",
     category: "design",
+    keywords: ["lantern", "ritual", "lighting", "metalwork", "glass", "design"],
+    story: {
+      title: "Light as Material and Atmosphere",
+      summary: "The lantern is treated as a design system that combines ritual symbolism with practical requirements for transport, ventilation, and diffusion.",
+      body: [
+        "Lantern design is a negotiation between atmosphere and engineering. Designers shape perceived warmth through material choices while preserving airflow and structural integrity.",
+        "The handle loop and cage crown create a recognizable silhouette that communicates function instantly. This is classic object language: form that teaches without text.",
+        "The diffusion core and base socket illustrate performance constraints. Light must be softened for comfort while the body remains stable, serviceable, and safe during repeated handling."
+      ],
+      references: [
+        { label: "Lantern Typologies", url: "https://en.wikipedia.org/wiki/Lantern" },
+        { label: "Lighting Design Basics", url: "https://en.wikipedia.org/wiki/Lighting" }
+      ]
+    },
     modelUrl:
       "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Lantern/glTF-Binary/Lantern.glb",
     modelRotation: [0, Math.PI * 0.9, 0],
