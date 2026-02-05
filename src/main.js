@@ -20,6 +20,8 @@ const elements = {
   loadingBarCompare: document.getElementById("loadingBarCompare"),
   loadingTextCompare: document.getElementById("loadingTextCompare"),
   searchInput: document.getElementById("artifactSearchInput"),
+  sortSelect: document.getElementById("artifactSortSelect"),
+  galleryStats: document.getElementById("galleryStats"),
   filterBar: document.getElementById("filterBar"),
   galleryList: document.getElementById("galleryList"),
   insightsPanel: document.getElementById("insightsPanel"),
@@ -67,6 +69,7 @@ const parsedUrlState = parseUrlState();
 const state = {
   currentCategory: "all",
   searchQuery: parsedUrlState.searchQuery,
+  sortMode: parsedUrlState.sortMode,
   currentArtifactId: null,
   compareArtifactId: getInitialCompareArtifactId(parsedUrlState.compareArtifactId),
   compareEnabled: parsedUrlState.compareEnabled,
@@ -262,12 +265,14 @@ initialize();
 
 function initialize() {
   elements.searchInput.value = state.searchQuery;
+  elements.sortSelect.value = state.sortMode;
 
   trackEvent("session_started", {
     sessionId: analytics.getSessionId(),
     compareFromUrl: state.compareEnabled,
     detailView: state.activeDetailView,
-    hasSearchQuery: Boolean(state.searchQuery)
+    hasSearchQuery: Boolean(state.searchQuery),
+    sortMode: state.sortMode
   });
 
   renderFilters();
@@ -316,6 +321,16 @@ function bindEvents() {
         results: getVisibleArtifacts().length
       });
     }, 380);
+  });
+
+  elements.sortSelect.addEventListener("change", () => {
+    state.sortMode = elements.sortSelect.value;
+    renderGallery();
+    scheduleUrlUpdate();
+    trackEvent("gallery_sort_changed", {
+      sortMode: state.sortMode,
+      results: getRankedArtifacts().length
+    });
   });
 
   elements.resetBtn.addEventListener("click", () => {
@@ -516,6 +531,7 @@ async function loadArtifact(artifactId, options = {}) {
         compareEnabled: state.compareEnabled,
         compareSync: state.compareSync,
         searchQuery: state.searchQuery,
+        sortMode: state.sortMode,
         detailView: state.activeDetailView,
         tourAutoPlay: state.tourAutoPlay
       };
@@ -730,7 +746,9 @@ function renderFilters() {
 
 function renderGallery() {
   elements.galleryList.innerHTML = "";
-  const visibleArtifacts = getVisibleArtifacts();
+  const visibleArtifacts = getRankedArtifacts();
+  const totalArtifacts = artifacts.length;
+  elements.galleryStats.textContent = `${visibleArtifacts.length} of ${totalArtifacts} artifacts`;
 
   if (!visibleArtifacts.length) {
     elements.galleryList.innerHTML = '<p class="empty-state">No artifacts match this search.</p>';
@@ -1223,6 +1241,10 @@ function updateUrlState() {
     params.set("q", state.searchQuery);
   }
 
+  if (state.sortMode !== "featured") {
+    params.set("sort", state.sortMode);
+  }
+
   const cameraPose = primaryViewer.getCameraPose();
   params.set("cam", serializeCameraPose(cameraPose));
 
@@ -1259,6 +1281,11 @@ function parseCameraPose(raw) {
   };
 }
 
+function normalizeSortMode(value) {
+  const supportedSorts = new Set(["featured", "newest", "popular", "alpha"]);
+  return supportedSorts.has(value) ? value : "featured";
+}
+
 function parseUrlState() {
   const params = new URLSearchParams(window.location.search);
   const artifactId = params.get("artifact");
@@ -1269,6 +1296,7 @@ function parseUrlState() {
   const compareArtifactId = params.get("compare");
   const detailView = params.get("view") === "story" ? "story" : "hotspots";
   const tourAutoPlay = params.get("autoplay") === "1";
+  const sortMode = normalizeSortMode(params.get("sort"));
 
   return {
     artifactId,
@@ -1279,6 +1307,7 @@ function parseUrlState() {
     compareEnabled: Boolean(compareArtifactId && artifactMap.has(compareArtifactId)),
     compareSync: params.get("sync") !== "0",
     searchQuery: params.get("q")?.trim() ?? "",
+    sortMode,
     detailView,
     tourAutoPlay,
     viewSpecified: params.has("view"),
@@ -1446,6 +1475,40 @@ function getVisibleArtifacts() {
 
     return searchHaystack.includes(query);
   });
+}
+
+function getRankedArtifacts() {
+  const visibleArtifacts = getVisibleArtifacts();
+
+  const sortedArtifacts = [...visibleArtifacts];
+
+  sortedArtifacts.sort((left, right) => {
+    if (state.sortMode === "newest") {
+      return (right.releaseYear ?? 0) - (left.releaseYear ?? 0);
+    }
+
+    if (state.sortMode === "popular") {
+      const rightScore = getArtifactPopularityScore(right.id);
+      const leftScore = getArtifactPopularityScore(left.id);
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return left.title.localeCompare(right.title);
+    }
+
+    if (state.sortMode === "alpha") {
+      return left.title.localeCompare(right.title);
+    }
+
+    return (left.featuredRank ?? 999) - (right.featuredRank ?? 999);
+  });
+
+  return sortedArtifacts;
+}
+
+function getArtifactPopularityScore(artifactId) {
+  const metrics = getArtifactMetrics(artifactId);
+  return metrics.views + metrics.hotspotOpens * 2 + metrics.tourStarts * 3 + metrics.tourLastStepReached * 4 + metrics.shares * 5;
 }
 
 function trackEvent(eventName, payload = {}) {

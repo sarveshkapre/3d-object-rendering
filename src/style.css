@@ -113,7 +113,36 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.42rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.64rem;
+}
+
+.sort-shell {
+  display: grid;
+  gap: 0.34rem;
+  margin-bottom: 0.48rem;
+}
+
+.sort-select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink-strong);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.5rem 0.6rem;
+  outline: none;
+}
+
+.sort-select:focus {
+  border-color: rgba(184, 106, 59, 0.56);
+  box-shadow: 0 0 0 3px rgba(184, 106, 59, 0.14);
+}
+
+.gallery-stats {
+  margin: 0 0 0.56rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
 }
 
 .gallery-list {

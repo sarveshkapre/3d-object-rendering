@@ -22,6 +22,16 @@
           <input id="artifactSearchInput" class="search-input" type="search" placeholder="Find by name, material, or story..." autocomplete="off" />
         </label>
         <div id="filterBar" class="filter-bar" role="tablist" aria-label="Artifact categories"></div>
+        <div class="sort-shell">
+          <label class="search-label" for="artifactSortSelect">Sort</label>
+          <select id="artifactSortSelect" class="sort-select" aria-label="Sort artifacts">
+            <option value="featured">Featured</option>
+            <option value="newest">Newest</option>
+            <option value="popular">Popularity</option>
+            <option value="alpha">A-Z</option>
+          </select>
+        </div>
+        <p id="galleryStats" class="gallery-stats"></p>
         <div id="galleryList" class="gallery-list" role="listbox" aria-label="Artifacts"></div>
         <section id="insightsPanel" class="insights-panel">
           <p class="panel-label">Session Insights</p>

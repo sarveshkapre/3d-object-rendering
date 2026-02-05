@@ -11,6 +11,8 @@ export const artifacts = [
     title: "Temple Sentinel Relic",
     hook: "A weathered guardian fragment inspired by South Asian stone monument craftsmanship.",
     category: "heritage",
+    releaseYear: 2025,
+    featuredRank: 1,
     keywords: ["temple", "stone", "carving", "relic", "architecture", "heritage"],
     story: {
       title: "Stone Memory and Sacred Geometry",
@@ -94,6 +96,8 @@ export const artifacts = [
     title: "Heritage Optical Camera",
     hook: "An instrument-scale study of machining, control ergonomics, and analog optical storytelling.",
     category: "engineering",
+    releaseYear: 2024,
+    featuredRank: 2,
     keywords: ["camera", "optics", "lens", "analog", "engineering", "machining"],
     story: {
       title: "Precision as a User Interface",
@@ -177,6 +181,8 @@ export const artifacts = [
     title: "Ritual Lantern",
     hook: "A luminous object study balancing metalwork ornament, glass diffusion, and ceremonial function.",
     category: "design",
+    releaseYear: 2026,
+    featuredRank: 3,
     keywords: ["lantern", "ritual", "lighting", "metalwork", "glass", "design"],
     story: {
       title: "Light as Material and Atmosphere",
