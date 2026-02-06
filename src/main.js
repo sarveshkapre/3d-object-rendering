@@ -6,6 +6,12 @@ import { ArtifactViewer } from "./viewer.js";
 const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
 const SESSION_METRICS_STORAGE_KEY = "artifact_viewer_metrics";
 const TOUR_AUTOPLAY_DELAY_MS = 4600;
+const VISUAL_PRESETS = ["white", "sand", "sky"];
+const VISUAL_PRESET_LABELS = {
+  white: "White",
+  sand: "Sand",
+  sky: "Sky"
+};
 
 const elements = {
   stage: document.getElementById("stage"),
@@ -56,6 +62,8 @@ const elements = {
   tourBtn: document.getElementById("tourBtn"),
   compareBtn: document.getElementById("compareBtn"),
   syncBtn: document.getElementById("syncBtn"),
+  presetBtn: document.getElementById("presetBtn"),
+  showcaseBtn: document.getElementById("showcaseBtn"),
   curatorBtn: document.getElementById("curatorBtn"),
   moderationBtn: document.getElementById("moderationBtn"),
   curatorModal: document.getElementById("curatorModal"),
@@ -112,6 +120,7 @@ const state = {
   compareEnabled: parsedUrlState.compareEnabled,
   compareSync: parsedUrlState.compareSync,
   compareReady: false,
+  visualPreset: parsedUrlState.visualPreset,
   activeDetailView: parsedUrlState.detailView,
   hotspotData: [],
   selectedHotspot: null,
@@ -129,6 +138,10 @@ const state = {
   searchTrackTimer: null,
   tourAutoPlay: parsedUrlState.tourAutoPlay,
   tourAutoPlayTimer: null,
+  showcaseActive: false,
+  showcaseRequested: parsedUrlState.showcaseActive,
+  showcaseTimer: null,
+  showcasePreviousAutoplay: parsedUrlState.tourAutoPlay,
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
   serverMetrics: {},
@@ -339,13 +352,17 @@ function initialize() {
     compareFromUrl: state.compareEnabled,
     detailView: state.activeDetailView,
     hasSearchQuery: Boolean(state.searchQuery),
-    sortMode: state.sortMode
+    sortMode: state.sortMode,
+    visualPreset: state.visualPreset,
+    showcaseFromUrl: state.showcaseRequested
   });
 
   renderFilters();
   renderGallery();
   renderCompareList();
   renderInsightsPanel();
+  renderRecentUpdatesPanel();
+  applyVisualPreset(state.visualPreset, { skipTrack: true, skipUrlUpdate: true });
   bindEvents();
   setDetailView(state.activeDetailView, { skipUrlUpdate: true });
   setCompareModeUI(state.compareEnabled);
@@ -362,6 +379,10 @@ function initialize() {
 async function bootstrap(artifactId) {
   await loadServerData();
   await loadArtifact(artifactId, { restoreFromUrl: true, skipCompareReload: true });
+
+  if (state.showcaseRequested) {
+    setShowcaseActive(true, { source: "url", skipTrack: true });
+  }
 
   if (!state.compareEnabled) {
     return;
@@ -402,6 +423,7 @@ function bindEvents() {
   });
 
   elements.resetBtn.addEventListener("click", () => {
+    haltShowcaseForManualInteraction("camera_reset");
     primaryViewer.resetView();
     if (state.compareEnabled && state.compareReady && !state.compareSync) {
       compareViewer.resetView();
@@ -414,10 +436,12 @@ function bindEvents() {
   });
 
   elements.hotspotToggleBtn.addEventListener("click", () => {
+    haltShowcaseForManualInteraction("toggle_hotspots");
     primaryViewer.toggleHotspots();
   });
 
   elements.tourBtn.addEventListener("click", () => {
+    haltShowcaseForManualInteraction("tour_toggle");
     if (state.tourActive) {
       primaryViewer.stopTour();
       showToast("Tour paused");
@@ -429,6 +453,7 @@ function bindEvents() {
   });
 
   elements.compareBtn.addEventListener("click", async () => {
+    haltShowcaseForManualInteraction("compare_toggle");
     if (state.compareEnabled) {
       state.compareEnabled = false;
       state.compareReady = false;
@@ -455,6 +480,7 @@ function bindEvents() {
   });
 
   elements.syncBtn.addEventListener("click", () => {
+    haltShowcaseForManualInteraction("compare_sync_toggle");
     if (!state.compareEnabled) {
       return;
     }
@@ -470,6 +496,14 @@ function bindEvents() {
     trackEvent("compare_sync_toggled", {
       enabled: state.compareSync
     });
+  });
+
+  elements.presetBtn.addEventListener("click", () => {
+    cycleVisualPreset("ui");
+  });
+
+  elements.showcaseBtn.addEventListener("click", () => {
+    setShowcaseActive(!state.showcaseActive, { source: "ui" });
   });
 
   elements.curatorBtn.addEventListener("click", () => {
@@ -696,6 +730,7 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeunload", () => {
+    clearShowcaseTimer();
     analytics.shutdown();
   });
 }
@@ -704,6 +739,13 @@ async function loadArtifact(artifactId, options = {}) {
   const artifact = artifactMap.get(artifactId);
   if (!artifact) {
     return;
+  }
+
+  if (state.showcaseActive && !options.fromShowcase) {
+    setShowcaseActive(false, {
+      source: options.source ?? "manual_navigation",
+      skipToast: true
+    });
   }
   const loadStartedAt = performance.now();
 
@@ -1028,6 +1070,7 @@ function setModerationOpen(open, options = {}) {
   elements.moderationModal.hidden = !state.moderationOpen;
 
   if (state.moderationOpen) {
+    haltShowcaseForManualInteraction("open_moderation");
     if (state.shortcutsOpen) {
       setShortcutsOpen(false, { skipTrack: true });
     }
@@ -1435,6 +1478,7 @@ function setCuratorOpen(open, options = {}) {
   elements.curatorModal.hidden = !state.curatorOpen;
 
   if (state.curatorOpen) {
+    haltShowcaseForManualInteraction("open_curator");
     if (state.shortcutsOpen) {
       setShortcutsOpen(false, { skipTrack: true });
     }
@@ -1700,6 +1744,7 @@ function setShortcutsOpen(open, options = {}) {
   elements.shortcutsModal.hidden = !state.shortcutsOpen;
 
   if (state.shortcutsOpen) {
+    haltShowcaseForManualInteraction("open_shortcuts");
     if (state.curatorOpen) {
       setCuratorOpen(false, { skipTrack: true });
     }
@@ -2072,12 +2117,167 @@ function scheduleTourAutoplay() {
   }, TOUR_AUTOPLAY_DELAY_MS);
 }
 
+function normalizeVisualPreset(value) {
+  return VISUAL_PRESETS.includes(value) ? value : "white";
+}
+
+function applyVisualPreset(presetId, options = {}) {
+  const normalizedPreset = normalizeVisualPreset(presetId);
+  const previousPreset = state.visualPreset;
+  state.visualPreset = normalizedPreset;
+
+  primaryViewer.setVisualPreset(normalizedPreset);
+  compareViewer.setVisualPreset(normalizedPreset);
+  updateHeaderControls();
+
+  if (previousPreset !== normalizedPreset && !options.skipTrack) {
+    trackEvent("visual_preset_changed", {
+      preset: normalizedPreset,
+      source: options.source ?? "unknown"
+    });
+  }
+
+  if (!options.skipUrlUpdate) {
+    scheduleUrlUpdate();
+  }
+}
+
+function cycleVisualPreset(source = "unknown") {
+  const currentIndex = VISUAL_PRESETS.indexOf(state.visualPreset);
+  const nextPreset = VISUAL_PRESETS[(Math.max(0, currentIndex) + 1) % VISUAL_PRESETS.length];
+  applyVisualPreset(nextPreset, { source });
+  showToast(`Preset: ${VISUAL_PRESET_LABELS[nextPreset] ?? nextPreset}`);
+}
+
+function clearShowcaseTimer() {
+  if (!state.showcaseTimer) {
+    return;
+  }
+
+  window.clearTimeout(state.showcaseTimer);
+  state.showcaseTimer = null;
+}
+
+function haltShowcaseForManualInteraction(source) {
+  if (!state.showcaseActive) {
+    return;
+  }
+
+  setShowcaseActive(false, {
+    source: source ?? "manual_interaction",
+    skipToast: true
+  });
+}
+
+function setShowcaseActive(enabled, options = {}) {
+  const nextState = Boolean(enabled);
+  if (state.showcaseActive === nextState) {
+    return;
+  }
+
+  state.showcaseActive = nextState;
+
+  if (state.showcaseActive) {
+    state.showcasePreviousAutoplay = state.tourAutoPlay;
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { skipTrack: true });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { skipTrack: true });
+    }
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { skipTrack: true });
+    }
+    if (state.compareEnabled) {
+      state.compareEnabled = false;
+      state.compareReady = false;
+      setCompareModeUI(false);
+    }
+
+    setDetailView("hotspots", { skipUrlUpdate: true });
+    if (!state.tourActive) {
+      primaryViewer.startTour(0);
+    }
+    setTourAutoplay(true, { source: "showcase", skipTrack: true, skipUrlUpdate: true });
+    scheduleShowcaseAdvance();
+
+    if (!options.skipToast) {
+      showToast("Showcase mode on");
+    }
+  } else {
+    clearShowcaseTimer();
+    setTourAutoplay(state.showcasePreviousAutoplay, { source: "showcase", skipTrack: true, skipUrlUpdate: true });
+    if (!options.skipToast) {
+      showToast("Showcase mode off");
+    }
+  }
+
+  updateHeaderControls();
+  scheduleUrlUpdate();
+
+  if (!options.skipTrack) {
+    trackEvent("showcase_toggled", {
+      enabled: state.showcaseActive,
+      source: options.source ?? "unknown"
+    });
+  }
+}
+
+function scheduleShowcaseAdvance() {
+  clearShowcaseTimer();
+  if (!state.showcaseActive) {
+    return;
+  }
+
+  const currentArtifact = artifactMap.get(state.currentArtifactId);
+  const stepCount = Math.max(1, currentArtifact?.tour?.length ?? 1);
+  const dwellMs = Math.max(16000, stepCount * TOUR_AUTOPLAY_DELAY_MS + 1200);
+
+  state.showcaseTimer = window.setTimeout(() => {
+    void advanceShowcaseArtifact();
+  }, dwellMs);
+}
+
+async function advanceShowcaseArtifact() {
+  if (!state.showcaseActive) {
+    return;
+  }
+
+  const orderedArtifacts = getRankedArtifacts();
+  if (!orderedArtifacts.length) {
+    scheduleShowcaseAdvance();
+    return;
+  }
+
+  const currentIndex = orderedArtifacts.findIndex((artifact) => artifact.id === state.currentArtifactId);
+  const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+  const nextArtifact = orderedArtifacts[(safeIndex + 1) % orderedArtifacts.length];
+  if (!nextArtifact) {
+    scheduleShowcaseAdvance();
+    return;
+  }
+
+  await loadArtifact(nextArtifact.id, { restoreFromUrl: false, fromShowcase: true, source: "showcase_advance" });
+  primaryViewer.startTour(0);
+  setTourAutoplay(true, { source: "showcase", skipTrack: true, skipUrlUpdate: true });
+  scheduleShowcaseAdvance();
+
+  trackEvent("showcase_artifact_advanced", {
+    artifactId: nextArtifact.id,
+    position: safeIndex + 2,
+    total: orderedArtifacts.length
+  });
+}
+
 function updateHeaderControls() {
   elements.tourBtn.textContent = state.tourActive ? "Exit Tour" : "Start Tour";
   elements.hotspotToggleBtn.textContent = primaryViewer.hotspotsEnabled ? "Hide Hotspots" : "Show Hotspots";
   elements.compareBtn.textContent = state.compareEnabled ? "Exit Compare" : "Compare";
   elements.syncBtn.hidden = !state.compareEnabled;
   elements.syncBtn.textContent = state.compareSync ? "Sync On" : "Sync Off";
+  elements.presetBtn.textContent = `Preset: ${VISUAL_PRESET_LABELS[state.visualPreset] ?? state.visualPreset}`;
+  elements.showcaseBtn.textContent = state.showcaseActive ? "Showcase On" : "Showcase Off";
+  elements.showcaseBtn.classList.toggle("is-active", state.showcaseActive);
   updateTourAutoplayUI();
 }
 
@@ -2144,6 +2344,13 @@ function handleKeydown(event) {
       trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_shortcuts" });
       return;
     }
+
+    if (state.showcaseActive) {
+      event.preventDefault();
+      setShowcaseActive(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "stop_showcase" });
+      return;
+    }
   }
 
   const target = event.target;
@@ -2183,6 +2390,7 @@ function handleKeydown(event) {
 
   if (key === "h") {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_h");
     primaryViewer.toggleHotspots();
     trackEvent("keyboard_shortcut_used", { key: "h", action: "toggle_hotspots" });
     return;
@@ -2190,6 +2398,7 @@ function handleKeydown(event) {
 
   if (key === "t") {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_t");
     elements.tourBtn.click();
     trackEvent("keyboard_shortcut_used", { key: "t", action: "toggle_tour" });
     return;
@@ -2197,6 +2406,7 @@ function handleKeydown(event) {
 
   if (key === "c") {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_c");
     elements.compareBtn.click();
     trackEvent("keyboard_shortcut_used", { key: "c", action: "toggle_compare" });
     return;
@@ -2204,6 +2414,7 @@ function handleKeydown(event) {
 
   if (key === "s") {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_s");
     const nextView = state.activeDetailView === "story" ? "hotspots" : "story";
     setDetailView(nextView);
     trackEvent("keyboard_shortcut_used", { key: "s", action: "toggle_story" });
@@ -2212,13 +2423,29 @@ function handleKeydown(event) {
 
   if (key === "a" && state.tourActive) {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_a");
     setTourAutoplay(!state.tourAutoPlay, { source: "keyboard" });
     trackEvent("keyboard_shortcut_used", { key: "a", action: "toggle_tour_autoplay" });
     return;
   }
 
+  if (key === "p") {
+    event.preventDefault();
+    cycleVisualPreset("keyboard");
+    trackEvent("keyboard_shortcut_used", { key: "p", action: "cycle_visual_preset" });
+    return;
+  }
+
+  if (key === "m") {
+    event.preventDefault();
+    setShowcaseActive(!state.showcaseActive, { source: "keyboard" });
+    trackEvent("keyboard_shortcut_used", { key: "m", action: "toggle_showcase" });
+    return;
+  }
+
   if (event.key === "ArrowRight" && state.tourActive) {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_arrow_right");
     primaryViewer.nextTourStep();
     trackEvent("keyboard_shortcut_used", { key: "ArrowRight", action: "tour_next" });
     return;
@@ -2226,6 +2453,7 @@ function handleKeydown(event) {
 
   if (event.key === "ArrowLeft" && state.tourActive) {
     event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_arrow_left");
     primaryViewer.previousTourStep();
     trackEvent("keyboard_shortcut_used", { key: "ArrowLeft", action: "tour_previous" });
   }
@@ -2304,6 +2532,14 @@ function updateUrlState() {
     params.set("sort", state.sortMode);
   }
 
+  if (state.visualPreset !== "white") {
+    params.set("preset", state.visualPreset);
+  }
+
+  if (state.showcaseActive) {
+    params.set("showcase", "1");
+  }
+
   const cameraPose = primaryViewer.getCameraPose();
   params.set("cam", serializeCameraPose(cameraPose));
 
@@ -2356,6 +2592,8 @@ function parseUrlState() {
   const detailView = params.get("view") === "story" ? "story" : "hotspots";
   const tourAutoPlay = params.get("autoplay") === "1";
   const sortMode = normalizeSortMode(params.get("sort"));
+  const visualPreset = normalizeVisualPreset(params.get("preset"));
+  const showcaseActive = params.get("showcase") === "1";
 
   return {
     artifactId,
@@ -2367,6 +2605,8 @@ function parseUrlState() {
     compareSync: params.get("sync") !== "0",
     searchQuery: params.get("q")?.trim() ?? "",
     sortMode,
+    visualPreset,
+    showcaseActive,
     detailView,
     tourAutoPlay,
     viewSpecified: params.has("view"),

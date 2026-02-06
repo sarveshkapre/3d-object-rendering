@@ -4,6 +4,32 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const DEG2RAD = Math.PI / 180;
 const EPSILON = 0.001;
+const VISUAL_PRESETS = {
+  white: {
+    background: "#ffffff",
+    exposure: 1.05,
+    hemisphere: { sky: "#ffffff", ground: "#e9e3d2", intensity: 0.9 },
+    key: { color: "#ffffff", intensity: 1.35 },
+    fill: { color: "#f5f4ee", intensity: 0.6 },
+    shadow: { color: "#8e8b83", opacity: 0.18 }
+  },
+  sand: {
+    background: "#fcf7ef",
+    exposure: 1.08,
+    hemisphere: { sky: "#fff8ea", ground: "#e8dfca", intensity: 0.95 },
+    key: { color: "#fff8e9", intensity: 1.3 },
+    fill: { color: "#f3ecdd", intensity: 0.68 },
+    shadow: { color: "#9c8f79", opacity: 0.2 }
+  },
+  sky: {
+    background: "#f3f8ff",
+    exposure: 1.02,
+    hemisphere: { sky: "#f4f8ff", ground: "#dce5ef", intensity: 0.88 },
+    key: { color: "#f9fbff", intensity: 1.32 },
+    fill: { color: "#e7eef8", intensity: 0.66 },
+    shadow: { color: "#7e8792", opacity: 0.16 }
+  }
+};
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -77,9 +103,11 @@ export class ArtifactViewer {
 
     this.cameraAnimation = null;
     this.cameraEventMuted = false;
+    this.visualPreset = "white";
 
     this._initLighting();
     this._initGroundShadow();
+    this.setVisualPreset(this.visualPreset);
     this._animate();
   }
 
@@ -91,40 +119,70 @@ export class ArtifactViewer {
   }
 
   _initLighting() {
-    const hemisphere = new THREE.HemisphereLight(0xffffff, 0xe9e3d2, 0.9);
-    hemisphere.position.set(0, 2.4, 0);
-    this.scene.add(hemisphere);
+    this.hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xe9e3d2, 0.9);
+    this.hemisphereLight.position.set(0, 2.4, 0);
+    this.scene.add(this.hemisphereLight);
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.35);
-    key.position.set(4.2, 7.8, 4.6);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.near = 0.4;
-    key.shadow.camera.far = 40;
-    key.shadow.camera.left = -8;
-    key.shadow.camera.right = 8;
-    key.shadow.camera.top = 8;
-    key.shadow.camera.bottom = -8;
-    key.shadow.bias = -0.0008;
-    this.scene.add(key);
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+    this.keyLight.position.set(4.2, 7.8, 4.6);
+    this.keyLight.castShadow = true;
+    this.keyLight.shadow.mapSize.set(2048, 2048);
+    this.keyLight.shadow.camera.near = 0.4;
+    this.keyLight.shadow.camera.far = 40;
+    this.keyLight.shadow.camera.left = -8;
+    this.keyLight.shadow.camera.right = 8;
+    this.keyLight.shadow.camera.top = 8;
+    this.keyLight.shadow.camera.bottom = -8;
+    this.keyLight.shadow.bias = -0.0008;
+    this.scene.add(this.keyLight);
 
-    const fill = new THREE.DirectionalLight(0xf5f4ee, 0.6);
-    fill.position.set(-5.4, 2.2, -4.6);
-    this.scene.add(fill);
+    this.fillLight = new THREE.DirectionalLight(0xf5f4ee, 0.6);
+    this.fillLight.position.set(-5.4, 2.2, -4.6);
+    this.scene.add(this.fillLight);
   }
 
   _initGroundShadow() {
     const plane = new THREE.PlaneGeometry(1, 1);
-    const shadowMaterial = new THREE.ShadowMaterial({
+    this.shadowMaterial = new THREE.ShadowMaterial({
       color: 0x8e8b83,
       opacity: 0.18
     });
-    this.shadowPlane = new THREE.Mesh(plane, shadowMaterial);
+    this.shadowPlane = new THREE.Mesh(plane, this.shadowMaterial);
     this.shadowPlane.rotation.x = -Math.PI / 2;
     this.shadowPlane.receiveShadow = true;
     this.shadowPlane.position.y = -0.02;
     this.shadowPlane.visible = false;
     this.scene.add(this.shadowPlane);
+  }
+
+  setVisualPreset(presetId = "white") {
+    const normalizedPreset = VISUAL_PRESETS[presetId] ? presetId : "white";
+    const preset = VISUAL_PRESETS[normalizedPreset];
+    this.visualPreset = normalizedPreset;
+
+    this.scene.background = new THREE.Color(preset.background);
+    this.renderer.toneMappingExposure = preset.exposure;
+
+    if (this.hemisphereLight) {
+      this.hemisphereLight.color.set(preset.hemisphere.sky);
+      this.hemisphereLight.groundColor.set(preset.hemisphere.ground);
+      this.hemisphereLight.intensity = preset.hemisphere.intensity;
+    }
+
+    if (this.keyLight) {
+      this.keyLight.color.set(preset.key.color);
+      this.keyLight.intensity = preset.key.intensity;
+    }
+
+    if (this.fillLight) {
+      this.fillLight.color.set(preset.fill.color);
+      this.fillLight.intensity = preset.fill.intensity;
+    }
+
+    if (this.shadowMaterial) {
+      this.shadowMaterial.color.set(preset.shadow.color);
+      this.shadowMaterial.opacity = preset.shadow.opacity;
+    }
   }
 
   async loadArtifact(artifact) {

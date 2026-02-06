@@ -6,15 +6,17 @@ Minimalist white-space 3D artifact experience with:
 - Rotate/zoom interaction with smooth orbit controls
 - 3D-anchored hotspots with occlusion fade
 - Guided narrative tour with cinematic camera moves
+- Kiosk-ready showcase mode that auto-plays tours and rotates artifacts
+- Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
 - Side-by-side compare mode with synchronized camera control
 - Artifact search across names, categories, tags, and story metadata
 - Story panel per artifact (curated narrative + references)
-- Deep-link sharing (`artifact`, `hotspot`, `tour`, `autoplay`, `cam`, `compare`, `sync`, `q`, `sort`, `view`)
+- Deep-link sharing (`artifact`, `hotspot`, `tour`, `autoplay`, `cam`, `compare`, `sync`, `q`, `sort`, `view`, `preset`, `showcase`)
 - Artifact library with category filters
 - Gallery sorting (`Featured`, `Newest`, `Popularity`, `A-Z`)
 - Event analytics pipeline (batched client events with optional backend endpoint)
 - Tour autoplay + in-session progress restore per artifact
-- Keyboard shortcuts (`T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, arrows for tour steps)
+- Keyboard shortcuts (`T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
 - Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
