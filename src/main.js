@@ -26,6 +26,8 @@ const elements = {
   galleryList: document.getElementById("galleryList"),
   insightsPanel: document.getElementById("insightsPanel"),
   insightsContent: document.getElementById("insightsContent"),
+  updatesPanel: document.getElementById("updatesPanel"),
+  updatesContent: document.getElementById("updatesContent"),
   comparePane: document.getElementById("comparePane"),
   comparePaneTitle: document.getElementById("comparePaneTitle"),
   compareHud: document.getElementById("compareHud"),
@@ -82,6 +84,10 @@ const elements = {
   moderationArtifactSelect: document.getElementById("moderationArtifactSelect"),
   moderationRefreshBtn: document.getElementById("moderationRefreshBtn"),
   moderationPendingList: document.getElementById("moderationPendingList"),
+  moderationDiffSummary: document.getElementById("moderationDiffSummary"),
+  moderationDiffBefore: document.getElementById("moderationDiffBefore"),
+  moderationDiffAfter: document.getElementById("moderationDiffAfter"),
+  moderationDecisionsList: document.getElementById("moderationDecisionsList"),
   moderationRevisionsList: document.getElementById("moderationRevisionsList"),
   moderationStatus: document.getElementById("moderationStatus"),
   shortcutsBtn: document.getElementById("shortcutsBtn"),
@@ -126,6 +132,7 @@ const state = {
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
   serverMetrics: {},
+  recentUpdates: [],
   cmsOverrides: {},
   curatorOpen: false,
   curatorArtifactId: null,
@@ -136,6 +143,8 @@ const state = {
   moderationReason: "",
   moderationArtifactId: null,
   moderationSubmissions: [],
+  moderationSelectedSubmissionId: null,
+  moderationRecentDecisions: [],
   moderationRevisions: [],
   shortcutsOpen: false,
   previousTourState: {
@@ -534,21 +543,35 @@ function bindEvents() {
 
   elements.moderationPendingList.addEventListener("click", async (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    if (!(target instanceof HTMLElement)) {
       return;
     }
 
-    const submissionId = target.dataset.submissionId;
+    const button = target.closest("button[data-action]");
+    if (!(button instanceof HTMLButtonElement)) {
+      const row = target.closest("[data-select-submission]");
+      if (row instanceof HTMLElement && row.dataset.selectSubmission) {
+        selectModerationSubmission(row.dataset.selectSubmission);
+      }
+      return;
+    }
+
+    const submissionId = button.dataset.submissionId;
     if (!submissionId) {
       return;
     }
 
-    if (target.dataset.action === "approve") {
+    if (button.dataset.action === "preview") {
+      selectModerationSubmission(submissionId);
+      return;
+    }
+
+    if (button.dataset.action === "approve") {
       await approveSubmission(submissionId);
       return;
     }
 
-    if (target.dataset.action === "reject") {
+    if (button.dataset.action === "reject") {
       await rejectSubmission(submissionId);
     }
   });
@@ -652,6 +675,26 @@ function bindEvents() {
     });
   });
 
+  elements.updatesContent.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = target.closest("button[data-update-artifact-id]");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const artifactId = button.dataset.updateArtifactId;
+    if (!artifactId || !artifactMap.has(artifactId)) {
+      return;
+    }
+
+    trackEvent("recent_update_opened", { artifactId });
+    void loadArtifact(artifactId, { restoreFromUrl: false });
+  });
+
   window.addEventListener("beforeunload", () => {
     analytics.shutdown();
   });
@@ -731,9 +774,10 @@ async function loadArtifact(artifactId, options = {}) {
 }
 
 async function loadServerData() {
-  const [overridesResult, countersResult] = await Promise.allSettled([
+  const [overridesResult, countersResult, updatesResult] = await Promise.allSettled([
     fetch("/api/cms/overrides"),
-    fetch("/api/analytics/counters")
+    fetch("/api/analytics/counters"),
+    fetch("/api/cms/recent-updates?limit=12")
   ]);
 
   if (overridesResult.status === "fulfilled" && overridesResult.value.ok) {
@@ -747,9 +791,15 @@ async function loadServerData() {
     state.serverMetrics = payload.artifacts ?? {};
   }
 
+  if (updatesResult.status === "fulfilled" && updatesResult.value.ok) {
+    const payload = await updatesResult.value.json();
+    state.recentUpdates = Array.isArray(payload.updates) ? payload.updates : [];
+  }
+
   renderCuratorArtifactOptions();
   renderGallery();
   renderInsightsPanel();
+  renderRecentUpdatesPanel();
 }
 
 function applyOverrides(overrides) {
@@ -1023,15 +1073,39 @@ function getModerationHeaders() {
 }
 
 async function loadModerationData() {
-  const submissionsResult = await fetch("/api/cms/submissions?status=pending");
-  if (!submissionsResult.ok) {
+  const [pendingResult, allResult] = await Promise.allSettled([
+    fetch("/api/cms/submissions?status=pending&include=override"),
+    fetch("/api/cms/submissions?status=all")
+  ]);
+
+  if (pendingResult.status !== "fulfilled" || !pendingResult.value.ok) {
     setModerationStatus("Failed to load pending submissions.", "error");
     return;
   }
 
-  const submissionsPayload = await submissionsResult.json();
+  const submissionsPayload = await pendingResult.value.json();
   state.moderationSubmissions = Array.isArray(submissionsPayload.submissions) ? submissionsPayload.submissions : [];
+  if (
+    !state.moderationSubmissions.length ||
+    !state.moderationSubmissions.some((submission) => submission.id === state.moderationSelectedSubmissionId)
+  ) {
+    state.moderationSelectedSubmissionId = state.moderationSubmissions[0]?.id ?? null;
+  }
+
+  if (allResult.status === "fulfilled" && allResult.value.ok) {
+    const allPayload = await allResult.value.json();
+    const allSubmissions = Array.isArray(allPayload.submissions) ? allPayload.submissions : [];
+    state.moderationRecentDecisions = allSubmissions
+      .filter((submission) => submission.status === "approved" || submission.status === "rejected")
+      .sort((left, right) => new Date(right.reviewedAt || right.createdAt).getTime() - new Date(left.reviewedAt || left.createdAt).getTime())
+      .slice(0, 16);
+  } else {
+    state.moderationRecentDecisions = [];
+  }
+
   renderModerationPendingList();
+  renderModerationDiffPanel();
+  renderModerationDecisionsList();
   await loadModerationRevisions(state.moderationArtifactId, { silent: true });
   setModerationStatus("Queue loaded.", "neutral");
 }
@@ -1059,23 +1133,89 @@ async function loadModerationRevisions(artifactId, options = {}) {
 function renderModerationPendingList() {
   if (!state.moderationSubmissions.length) {
     elements.moderationPendingList.innerHTML = '<p class="insights-empty">No pending submissions.</p>';
+    renderModerationDiffPanel();
     return;
   }
 
   elements.moderationPendingList.innerHTML = state.moderationSubmissions
     .map((submission) => {
       const preview = submission.operation === "delete" ? "Delete live override" : "Update override";
+      const selectedClass = submission.id === state.moderationSelectedSubmissionId ? "is-selected" : "";
+      const diff = getSubmissionDiffModel(submission);
+      const changedFieldsText = diff.changedPaths.length ? `${diff.changedPaths.length} changed fields` : "No effective changes";
+      return `
+        <div class="curator-hotspot ${selectedClass}" data-select-submission="${escapeHtml(submission.id)}">
+          <p class="curator-hotspot-title">${escapeHtml(submission.id)}</p>
+          <p class="moderation-meta">
+            <strong>${escapeHtml(submission.artifactId)}</strong> · ${escapeHtml(preview)}<br />
+            ${escapeHtml(new Date(submission.createdAt).toLocaleString())}<br />
+            ${escapeHtml(changedFieldsText)}
+          </p>
+          <div class="moderation-actions">
+            <button class="chip-btn" data-action="preview" data-submission-id="${escapeHtml(submission.id)}" type="button">Preview Diff</button>
+            <button class="chip-btn is-active" data-action="approve" data-submission-id="${escapeHtml(submission.id)}" type="button">Approve</button>
+            <button class="chip-btn" data-action="reject" data-submission-id="${escapeHtml(submission.id)}" type="button">Reject</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function selectModerationSubmission(submissionId) {
+  if (!submissionId) {
+    return;
+  }
+
+  state.moderationSelectedSubmissionId = submissionId;
+  renderModerationPendingList();
+  renderModerationDiffPanel();
+}
+
+function renderModerationDiffPanel() {
+  if (!state.moderationSubmissions.length) {
+    elements.moderationDiffSummary.textContent = "No pending submission selected.";
+    elements.moderationDiffBefore.textContent = "{}";
+    elements.moderationDiffAfter.textContent = "{}";
+    return;
+  }
+
+  const selected =
+    state.moderationSubmissions.find((submission) => submission.id === state.moderationSelectedSubmissionId) ?? state.moderationSubmissions[0];
+  if (!selected) {
+    elements.moderationDiffSummary.textContent = "No pending submission selected.";
+    elements.moderationDiffBefore.textContent = "{}";
+    elements.moderationDiffAfter.textContent = "{}";
+    return;
+  }
+
+  const diff = getSubmissionDiffModel(selected);
+  const changedFields = diff.changedPaths.length ? diff.changedPaths.join(", ") : "No effective field change";
+  elements.moderationDiffSummary.textContent = `${selected.artifactId} · ${selected.operation} · ${changedFields}`;
+  elements.moderationDiffBefore.textContent = formatJsonCode(diff.beforeOverride);
+  elements.moderationDiffAfter.textContent = formatJsonCode(diff.afterOverride);
+}
+
+function renderModerationDecisionsList() {
+  if (!state.moderationRecentDecisions.length) {
+    elements.moderationDecisionsList.innerHTML = '<p class="insights-empty">No reviewed submissions yet.</p>';
+    return;
+  }
+
+  elements.moderationDecisionsList.innerHTML = state.moderationRecentDecisions
+    .map((submission) => {
+      const statusLabel = submission.status === "rejected" ? "Rejected" : "Approved";
+      const reason = submission.reason?.trim() ? submission.reason.trim() : "No moderation note.";
+      const reviewedAt = submission.reviewedAt || submission.createdAt;
+
       return `
         <div class="curator-hotspot">
           <p class="curator-hotspot-title">${escapeHtml(submission.id)}</p>
           <p class="moderation-meta">
-            <strong>${escapeHtml(submission.artifactId)}</strong> · ${escapeHtml(preview)}<br />
-            ${escapeHtml(new Date(submission.createdAt).toLocaleString())}
+            <strong>${escapeHtml(submission.artifactId)}</strong> · ${escapeHtml(statusLabel)}<br />
+            ${escapeHtml(reason)}<br />
+            ${escapeHtml(new Date(reviewedAt).toLocaleString())}
           </p>
-          <div class="moderation-actions">
-            <button class="chip-btn is-active" data-action="approve" data-submission-id="${escapeHtml(submission.id)}" type="button">Approve</button>
-            <button class="chip-btn" data-action="reject" data-submission-id="${escapeHtml(submission.id)}" type="button">Reject</button>
-          </div>
         </div>
       `;
     })
@@ -1091,11 +1231,13 @@ function renderModerationRevisions() {
   elements.moderationRevisionsList.innerHTML = state.moderationRevisions
     .map((revision) => {
       const actionLabel = revision.action === "restore_revision" ? "Restored" : "Approved submission";
+      const reason = revision.reason?.trim() ? revision.reason.trim() : "No moderation note.";
       return `
         <div class="curator-hotspot">
           <p class="curator-hotspot-title">${escapeHtml(revision.id)}</p>
           <p class="moderation-meta">
-            ${escapeHtml(actionLabel)} · ${escapeHtml(new Date(revision.createdAt).toLocaleString())}
+            ${escapeHtml(actionLabel)} · ${escapeHtml(new Date(revision.createdAt).toLocaleString())}<br />
+            ${escapeHtml(reason)}
           </p>
           <div class="moderation-actions">
             <button class="chip-btn" data-action="restore" data-revision-id="${escapeHtml(revision.id)}" type="button">Restore This</button>
@@ -1104,6 +1246,68 @@ function renderModerationRevisions() {
       `;
     })
     .join("");
+}
+
+function getSubmissionDiffModel(submission) {
+  const beforeOverride = state.cmsOverrides[submission.artifactId] ? structuredClone(state.cmsOverrides[submission.artifactId]) : null;
+  const afterOverride =
+    submission.operation === "delete" ? null : applySubmissionPreviewOverride(beforeOverride ?? {}, submission.override ?? {});
+  const changedPaths = collectDiffPaths(beforeOverride ?? {}, afterOverride ?? {});
+
+  return {
+    beforeOverride,
+    afterOverride,
+    changedPaths
+  };
+}
+
+function applySubmissionPreviewOverride(existing, update) {
+  const next = { ...existing };
+  const allowed = ["title", "hook", "keywords", "story", "releaseYear", "featuredRank", "hotspots"];
+
+  for (const key of allowed) {
+    if (update[key] !== undefined) {
+      next[key] = update[key];
+    }
+  }
+
+  return next;
+}
+
+function collectDiffPaths(before, after, prefix = "") {
+  if (before === after) {
+    return [];
+  }
+
+  if (Array.isArray(before) || Array.isArray(after)) {
+    const beforeEncoded = JSON.stringify(before ?? null);
+    const afterEncoded = JSON.stringify(after ?? null);
+    return beforeEncoded === afterEncoded ? [] : [prefix || "(root)"];
+  }
+
+  if (isPlainObject(before) && isPlainObject(after)) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    const paths = [];
+
+    for (const key of keys) {
+      const nextPrefix = prefix ? `${prefix}.${key}` : key;
+      paths.push(...collectDiffPaths(before[key], after[key], nextPrefix));
+    }
+
+    return paths;
+  }
+
+  const beforeEncoded = JSON.stringify(before ?? null);
+  const afterEncoded = JSON.stringify(after ?? null);
+  return beforeEncoded === afterEncoded ? [] : [prefix || "(root)"];
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatJsonCode(value) {
+  return JSON.stringify(value ?? null, null, 2);
 }
 
 async function approveSubmission(submissionId) {
@@ -1151,6 +1355,12 @@ async function rejectSubmission(submissionId) {
     return;
   }
 
+  const reason = state.moderationReason.trim();
+  if (!reason) {
+    setModerationStatus("Rejection requires a review note.", "error");
+    return;
+  }
+
   setModerationStatus("Rejecting submission...", "neutral");
   elements.moderationRefreshBtn.disabled = true;
 
@@ -1158,7 +1368,7 @@ async function rejectSubmission(submissionId) {
     const response = await fetch(`/api/cms/submissions/${encodeURIComponent(submissionId)}/reject`, {
       method: "POST",
       headers: getModerationHeaders(),
-      body: JSON.stringify({ reason: state.moderationReason.trim() || undefined })
+      body: JSON.stringify({ reason })
     });
 
     if (!response.ok) {
@@ -1736,6 +1946,40 @@ function renderInsightsPanel() {
     </div>
     <p class="insights-top-label">Top Hotspots</p>
     <ol class="insights-top-list">${topHotspotMarkup}</ol>
+  `;
+}
+
+function renderRecentUpdatesPanel() {
+  if (!Array.isArray(state.recentUpdates) || !state.recentUpdates.length) {
+    elements.updatesContent.innerHTML = '<p class="insights-empty">No published updates yet.</p>';
+    return;
+  }
+
+  elements.updatesContent.innerHTML = `
+    <ol class="updates-list">
+      ${state.recentUpdates
+        .slice(0, 10)
+        .map((update) => {
+          const action =
+            update.action === "restore_revision"
+              ? "Restored Revision"
+              : update.operation === "delete"
+                ? "Approved Delete"
+                : "Approved Update";
+
+          const note = update.reason ? ` - ${update.reason}` : "";
+          return `
+            <li>
+              <button class="update-item" type="button" data-update-artifact-id="${escapeHtml(update.artifactId)}">
+                <span class="update-item-meta">${escapeHtml(update.artifactId)} · ${escapeHtml(action)}</span>
+                <span>${escapeHtml(note || "Published change")}</span>
+                <span class="update-item-time">${escapeHtml(new Date(update.createdAt).toLocaleString())}</span>
+              </button>
+            </li>
+          `;
+        })
+        .join("")}
+    </ol>
   `;
 }
 

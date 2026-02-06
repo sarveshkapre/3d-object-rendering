@@ -245,8 +245,8 @@ function createSubmission({ artifactId, operation, override }) {
   };
 }
 
-function getSubmissionPreview(submission) {
-  return {
+function getSubmissionPreview(submission, options = {}) {
+  const preview = {
     id: submission.id,
     artifactId: submission.artifactId,
     operation: submission.operation,
@@ -255,6 +255,42 @@ function getSubmissionPreview(submission) {
     createdAt: submission.createdAt,
     reviewedAt: submission.reviewedAt
   };
+
+  if (options.includeOverride) {
+    preview.override = submission.override;
+  }
+
+  return preview;
+}
+
+function getRecentUpdates(store, options = {}) {
+  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(100, Number(options.limit))) : 20;
+  const all = [];
+
+  for (const [artifactId, revisions] of Object.entries(store.revisions)) {
+    if (!Array.isArray(revisions)) {
+      continue;
+    }
+
+    for (const revision of revisions) {
+      if (!revision || typeof revision !== "object") {
+        continue;
+      }
+
+      all.push({
+        id: typeof revision.id === "string" ? revision.id : createId("rev"),
+        artifactId: typeof revision.artifactId === "string" ? revision.artifactId : artifactId,
+        action: typeof revision.action === "string" ? revision.action : "unknown",
+        operation: typeof revision.operation === "string" ? revision.operation : "",
+        reason: typeof revision.reason === "string" ? revision.reason : "",
+        createdAt: typeof revision.createdAt === "string" ? revision.createdAt : new Date().toISOString()
+      });
+    }
+  }
+
+  return all
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, limit);
 }
 
 const server = createServer(async (req, res) => {
@@ -335,13 +371,24 @@ const server = createServer(async (req, res) => {
 
   if (method === "GET" && url.pathname === "/api/cms/submissions") {
     const statusFilter = url.searchParams.get("status") || "pending";
+    const includeOverride = url.searchParams.get("include") === "override";
     const submissions = store.submissions
       .filter((submission) => statusFilter === "all" || submission.status === statusFilter)
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-      .map(getSubmissionPreview);
+      .map((submission) => getSubmissionPreview(submission, { includeOverride }));
 
     json(res, 200, {
       submissions
+    });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/cms/recent-updates") {
+    const limit = Number(url.searchParams.get("limit") || 20);
+    const updates = getRecentUpdates(store, { limit });
+
+    json(res, 200, {
+      updates
     });
     return;
   }

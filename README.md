@@ -19,6 +19,8 @@ Minimalist white-space 3D artifact experience with:
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
+- Side-by-side moderation diff preview and reviewed decision log with rejection notes
+- Public recent updates feed sourced from revision history
 
 ## Run
 
@@ -68,10 +70,12 @@ The API runs with frontend in `npm run dev`.
 - CMS submissions create/update: `PUT /api/cms/overrides/:artifactId` (queued, not instantly live)
 - CMS submissions create/delete request: `DELETE /api/cms/overrides/:artifactId` (queued, not instantly live)
 - CMS pending queue: `GET /api/cms/submissions?status=pending`
+- CMS pending queue with override payload: `GET /api/cms/submissions?status=pending&include=override`
 - CMS approve submission: `POST /api/cms/submissions/:submissionId/approve`
 - CMS reject submission: `POST /api/cms/submissions/:submissionId/reject`
 - CMS revisions by artifact: `GET /api/cms/revisions/:artifactId`
 - CMS restore revision: `POST /api/cms/revisions/:artifactId/:revisionId/restore`
+- CMS recent updates feed: `GET /api/cms/recent-updates?limit=12`
 
 Curator editor supports:
 
@@ -83,7 +87,7 @@ Moderation flow:
 
 1. Curator submits anonymous change request.
 2. Request appears in pending moderation queue.
-3. Moderator approves/rejects (open by default; optional token lock).
+3. Moderator reviews side-by-side diff, then approves/rejects (rejections require a note).
 4. Approved changes become live and create a revision snapshot.
 5. Any revision can be restored.
 

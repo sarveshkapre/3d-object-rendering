@@ -37,6 +37,10 @@
           <p class="panel-label">Session Insights</p>
           <div id="insightsContent" class="insights-content"></div>
         </section>
+        <section id="updatesPanel" class="insights-panel">
+          <p class="panel-label">Recent Updates</p>
+          <div id="updatesContent" class="insights-content"></div>
+        </section>
       </aside>
 
       <main id="stage" class="stage">
@@ -250,6 +254,28 @@
             <section class="curator-hotspots">
               <p class="panel-label">Pending Submissions</p>
               <div id="moderationPendingList" class="curator-hotspots-list"></div>
+            </section>
+
+            <section class="curator-hotspots">
+              <p class="panel-label">Selected Submission Diff</p>
+              <div class="moderation-diff-shell">
+                <p id="moderationDiffSummary" class="moderation-meta"></p>
+                <div class="moderation-diff-grid">
+                  <div class="moderation-diff-column">
+                    <p class="curator-hotspot-title">Live Override</p>
+                    <pre id="moderationDiffBefore" class="moderation-diff-code"></pre>
+                  </div>
+                  <div class="moderation-diff-column">
+                    <p class="curator-hotspot-title">Proposed</p>
+                    <pre id="moderationDiffAfter" class="moderation-diff-code"></pre>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="curator-hotspots">
+              <p class="panel-label">Recent Decisions</p>
+              <div id="moderationDecisionsList" class="curator-hotspots-list"></div>
             </section>
 
             <section class="curator-hotspots">
