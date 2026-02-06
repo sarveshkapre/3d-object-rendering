@@ -946,6 +946,19 @@ body {
   letter-spacing: 0.06em;
 }
 
+.moderation-meta {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.moderation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .curator-status {
   margin: 0.8rem 0 0;
   min-height: 1.2em;

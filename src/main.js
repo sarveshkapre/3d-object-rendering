@@ -55,6 +55,7 @@ const elements = {
   compareBtn: document.getElementById("compareBtn"),
   syncBtn: document.getElementById("syncBtn"),
   curatorBtn: document.getElementById("curatorBtn"),
+  moderationBtn: document.getElementById("moderationBtn"),
   curatorModal: document.getElementById("curatorModal"),
   curatorForm: document.getElementById("curatorForm"),
   curatorCloseBtn: document.getElementById("curatorCloseBtn"),
@@ -74,6 +75,15 @@ const elements = {
   curatorDeleteBtn: document.getElementById("curatorDeleteBtn"),
   curatorSaveBtn: document.getElementById("curatorSaveBtn"),
   curatorStatus: document.getElementById("curatorStatus"),
+  moderationModal: document.getElementById("moderationModal"),
+  moderationCloseBtn: document.getElementById("moderationCloseBtn"),
+  moderationTokenInput: document.getElementById("moderationTokenInput"),
+  moderationReasonInput: document.getElementById("moderationReasonInput"),
+  moderationArtifactSelect: document.getElementById("moderationArtifactSelect"),
+  moderationRefreshBtn: document.getElementById("moderationRefreshBtn"),
+  moderationPendingList: document.getElementById("moderationPendingList"),
+  moderationRevisionsList: document.getElementById("moderationRevisionsList"),
+  moderationStatus: document.getElementById("moderationStatus"),
   shortcutsBtn: document.getElementById("shortcutsBtn"),
   shortcutsModal: document.getElementById("shortcutsModal"),
   shortcutsCloseBtn: document.getElementById("shortcutsCloseBtn"),
@@ -121,6 +131,12 @@ const state = {
   curatorArtifactId: null,
   curatorToken: "",
   curatorWorkingHotspots: [],
+  moderationOpen: false,
+  moderationToken: "",
+  moderationReason: "",
+  moderationArtifactId: null,
+  moderationSubmissions: [],
+  moderationRevisions: [],
   shortcutsOpen: false,
   previousTourState: {
     active: false,
@@ -149,7 +165,11 @@ const primaryViewer = new ArtifactViewer({
       if (!state.curatorArtifactId) {
         state.curatorArtifactId = artifact.id;
       }
+      if (!state.moderationArtifactId) {
+        state.moderationArtifactId = artifact.id;
+      }
       renderCuratorArtifactOptions();
+      renderModerationArtifactOptions();
       if (state.curatorOpen && state.curatorArtifactId === artifact.id) {
         populateCuratorForm(artifact.id);
       }
@@ -301,7 +321,9 @@ function initialize() {
   elements.searchInput.value = state.searchQuery;
   elements.sortSelect.value = state.sortMode;
   state.curatorArtifactId = parsedUrlState.artifactId && artifactMap.has(parsedUrlState.artifactId) ? parsedUrlState.artifactId : artifacts[0]?.id ?? null;
+  state.moderationArtifactId = state.curatorArtifactId;
   renderCuratorArtifactOptions();
+  renderModerationArtifactOptions();
 
   trackEvent("session_started", {
     sessionId: analytics.getSessionId(),
@@ -476,6 +498,75 @@ function bindEvents() {
   elements.curatorForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     await saveCuratorOverride(state.curatorArtifactId);
+  });
+
+  elements.moderationBtn.addEventListener("click", () => {
+    setModerationOpen(!state.moderationOpen, { source: "ui" });
+  });
+
+  elements.moderationCloseBtn.addEventListener("click", () => {
+    setModerationOpen(false, { source: "ui" });
+  });
+
+  elements.moderationModal.addEventListener("click", (event) => {
+    if (event.target === elements.moderationModal) {
+      setModerationOpen(false, { source: "overlay" });
+    }
+  });
+
+  elements.moderationTokenInput.addEventListener("input", () => {
+    state.moderationToken = elements.moderationTokenInput.value;
+  });
+
+  elements.moderationReasonInput.addEventListener("input", () => {
+    state.moderationReason = elements.moderationReasonInput.value;
+  });
+
+  elements.moderationArtifactSelect.addEventListener("change", async () => {
+    state.moderationArtifactId = elements.moderationArtifactSelect.value;
+    await loadModerationRevisions(state.moderationArtifactId);
+  });
+
+  elements.moderationRefreshBtn.addEventListener("click", async () => {
+    await loadModerationData();
+    setModerationStatus("Moderation queue refreshed.", "success");
+  });
+
+  elements.moderationPendingList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const submissionId = target.dataset.submissionId;
+    if (!submissionId) {
+      return;
+    }
+
+    if (target.dataset.action === "approve") {
+      await approveSubmission(submissionId);
+      return;
+    }
+
+    if (target.dataset.action === "reject") {
+      await rejectSubmission(submissionId);
+    }
+  });
+
+  elements.moderationRevisionsList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const revisionId = target.dataset.revisionId;
+    if (!revisionId) {
+      return;
+    }
+
+    if (target.dataset.action === "restore") {
+      await restoreRevision(revisionId);
+    }
   });
 
   elements.shortcutsBtn.addEventListener("click", () => {
@@ -867,6 +958,268 @@ function renderCuratorArtifactOptions() {
   }
 }
 
+function renderModerationArtifactOptions() {
+  const optionsMarkup = artifacts
+    .map((artifact) => `<option value="${escapeHtml(artifact.id)}">${escapeHtml(artifact.title)}</option>`)
+    .join("");
+
+  elements.moderationArtifactSelect.innerHTML = optionsMarkup;
+
+  if (state.moderationArtifactId && artifactMap.has(state.moderationArtifactId)) {
+    elements.moderationArtifactSelect.value = state.moderationArtifactId;
+  } else if (artifacts[0]) {
+    state.moderationArtifactId = artifacts[0].id;
+    elements.moderationArtifactSelect.value = artifacts[0].id;
+  }
+}
+
+function setModerationOpen(open, options = {}) {
+  state.moderationOpen = Boolean(open);
+  elements.moderationModal.hidden = !state.moderationOpen;
+
+  if (state.moderationOpen) {
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { skipTrack: true });
+    }
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { skipTrack: true });
+    }
+
+    state.moderationArtifactId = state.currentArtifactId ?? state.moderationArtifactId ?? artifacts[0]?.id ?? null;
+    renderModerationArtifactOptions();
+    elements.moderationTokenInput.value = state.moderationToken;
+    elements.moderationReasonInput.value = state.moderationReason;
+    void loadModerationData();
+    elements.moderationCloseBtn.focus();
+  } else {
+    elements.moderationBtn.focus();
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("moderation_overlay_toggled", {
+      open: state.moderationOpen,
+      source: options.source ?? "unknown"
+    });
+  }
+}
+
+function setModerationStatus(message, tone = "neutral") {
+  elements.moderationStatus.textContent = message;
+  elements.moderationStatus.classList.toggle("is-error", tone === "error");
+  elements.moderationStatus.classList.toggle("is-success", tone === "success");
+}
+
+function getModerationHeaders() {
+  const headers = {
+    "content-type": "application/json"
+  };
+
+  const token = state.moderationToken.trim() || state.curatorToken.trim();
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
+
+async function loadModerationData() {
+  const submissionsResult = await fetch("/api/cms/submissions?status=pending");
+  if (!submissionsResult.ok) {
+    setModerationStatus("Failed to load pending submissions.", "error");
+    return;
+  }
+
+  const submissionsPayload = await submissionsResult.json();
+  state.moderationSubmissions = Array.isArray(submissionsPayload.submissions) ? submissionsPayload.submissions : [];
+  renderModerationPendingList();
+  await loadModerationRevisions(state.moderationArtifactId, { silent: true });
+  setModerationStatus("Queue loaded.", "neutral");
+}
+
+async function loadModerationRevisions(artifactId, options = {}) {
+  if (!artifactId) {
+    state.moderationRevisions = [];
+    renderModerationRevisions();
+    return;
+  }
+
+  const response = await fetch(`/api/cms/revisions/${encodeURIComponent(artifactId)}`);
+  if (!response.ok) {
+    if (!options.silent) {
+      setModerationStatus("Failed to load revisions.", "error");
+    }
+    return;
+  }
+
+  const payload = await response.json();
+  state.moderationRevisions = Array.isArray(payload.revisions) ? payload.revisions : [];
+  renderModerationRevisions();
+}
+
+function renderModerationPendingList() {
+  if (!state.moderationSubmissions.length) {
+    elements.moderationPendingList.innerHTML = '<p class="insights-empty">No pending submissions.</p>';
+    return;
+  }
+
+  elements.moderationPendingList.innerHTML = state.moderationSubmissions
+    .map((submission) => {
+      const preview = submission.operation === "delete" ? "Delete live override" : "Update override";
+      return `
+        <div class="curator-hotspot">
+          <p class="curator-hotspot-title">${escapeHtml(submission.id)}</p>
+          <p class="moderation-meta">
+            <strong>${escapeHtml(submission.artifactId)}</strong> · ${escapeHtml(preview)}<br />
+            ${escapeHtml(new Date(submission.createdAt).toLocaleString())}
+          </p>
+          <div class="moderation-actions">
+            <button class="chip-btn is-active" data-action="approve" data-submission-id="${escapeHtml(submission.id)}" type="button">Approve</button>
+            <button class="chip-btn" data-action="reject" data-submission-id="${escapeHtml(submission.id)}" type="button">Reject</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderModerationRevisions() {
+  if (!state.moderationRevisions.length) {
+    elements.moderationRevisionsList.innerHTML = '<p class="insights-empty">No revisions for this artifact yet.</p>';
+    return;
+  }
+
+  elements.moderationRevisionsList.innerHTML = state.moderationRevisions
+    .map((revision) => {
+      const actionLabel = revision.action === "restore_revision" ? "Restored" : "Approved submission";
+      return `
+        <div class="curator-hotspot">
+          <p class="curator-hotspot-title">${escapeHtml(revision.id)}</p>
+          <p class="moderation-meta">
+            ${escapeHtml(actionLabel)} · ${escapeHtml(new Date(revision.createdAt).toLocaleString())}
+          </p>
+          <div class="moderation-actions">
+            <button class="chip-btn" data-action="restore" data-revision-id="${escapeHtml(revision.id)}" type="button">Restore This</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function approveSubmission(submissionId) {
+  const submission = state.moderationSubmissions.find((item) => item.id === submissionId);
+  if (!submission) {
+    return;
+  }
+
+  setModerationStatus("Approving submission...", "neutral");
+  elements.moderationRefreshBtn.disabled = true;
+
+  try {
+    const response = await fetch(`/api/cms/submissions/${encodeURIComponent(submissionId)}/approve`, {
+      method: "POST",
+      headers: getModerationHeaders(),
+      body: JSON.stringify({ reason: state.moderationReason.trim() || undefined })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "request_failed" }));
+      throw new Error(error.error || `request_failed_${response.status}`);
+    }
+
+    await loadServerData();
+    await loadModerationData();
+    if (submission.artifactId === state.currentArtifactId) {
+      await loadArtifact(state.currentArtifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    }
+
+    setModerationStatus("Submission approved and published.", "success");
+    trackEvent("moderation_submission_approved", {
+      artifactId: submission.artifactId,
+      submissionId
+    });
+  } catch (error) {
+    setModerationStatus(`Approval failed: ${error.message}`, "error");
+  } finally {
+    elements.moderationRefreshBtn.disabled = false;
+  }
+}
+
+async function rejectSubmission(submissionId) {
+  const submission = state.moderationSubmissions.find((item) => item.id === submissionId);
+  if (!submission) {
+    return;
+  }
+
+  setModerationStatus("Rejecting submission...", "neutral");
+  elements.moderationRefreshBtn.disabled = true;
+
+  try {
+    const response = await fetch(`/api/cms/submissions/${encodeURIComponent(submissionId)}/reject`, {
+      method: "POST",
+      headers: getModerationHeaders(),
+      body: JSON.stringify({ reason: state.moderationReason.trim() || undefined })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "request_failed" }));
+      throw new Error(error.error || `request_failed_${response.status}`);
+    }
+
+    await loadModerationData();
+    setModerationStatus("Submission rejected.", "success");
+    trackEvent("moderation_submission_rejected", {
+      artifactId: submission.artifactId,
+      submissionId
+    });
+  } catch (error) {
+    setModerationStatus(`Rejection failed: ${error.message}`, "error");
+  } finally {
+    elements.moderationRefreshBtn.disabled = false;
+  }
+}
+
+async function restoreRevision(revisionId) {
+  if (!state.moderationArtifactId) {
+    return;
+  }
+
+  setModerationStatus("Restoring revision...", "neutral");
+  elements.moderationRefreshBtn.disabled = true;
+
+  try {
+    const response = await fetch(
+      `/api/cms/revisions/${encodeURIComponent(state.moderationArtifactId)}/${encodeURIComponent(revisionId)}/restore`,
+      {
+        method: "POST",
+        headers: getModerationHeaders(),
+        body: JSON.stringify({ reason: state.moderationReason.trim() || undefined })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "request_failed" }));
+      throw new Error(error.error || `request_failed_${response.status}`);
+    }
+
+    await loadServerData();
+    await loadModerationData();
+    if (state.moderationArtifactId === state.currentArtifactId) {
+      await loadArtifact(state.currentArtifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    }
+
+    setModerationStatus("Revision restored successfully.", "success");
+    trackEvent("moderation_revision_restored", {
+      artifactId: state.moderationArtifactId,
+      revisionId
+    });
+  } catch (error) {
+    setModerationStatus(`Restore failed: ${error.message}`, "error");
+  } finally {
+    elements.moderationRefreshBtn.disabled = false;
+  }
+}
+
 function setCuratorOpen(open, options = {}) {
   state.curatorOpen = Boolean(open);
   elements.curatorModal.hidden = !state.curatorOpen;
@@ -874,6 +1227,9 @@ function setCuratorOpen(open, options = {}) {
   if (state.curatorOpen) {
     if (state.shortcutsOpen) {
       setShortcutsOpen(false, { skipTrack: true });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { skipTrack: true });
     }
     if (!state.curatorArtifactId) {
       state.curatorArtifactId = state.currentArtifactId ?? artifacts[0]?.id ?? null;
@@ -939,9 +1295,9 @@ function populateCuratorForm(artifactId) {
 
   const hasOverride = Boolean(state.cmsOverrides[artifactId]);
   if (hasOverride) {
-    setCuratorStatus("Editing active override.", "success");
+    setCuratorStatus("Editing currently live override content.", "success");
   } else {
-    setCuratorStatus("No override saved yet. Saving will create one.", "neutral");
+    setCuratorStatus("No live override yet. Submission will enter moderation queue.", "neutral");
   }
 }
 
@@ -1060,7 +1416,7 @@ async function saveCuratorOverride(artifactId) {
   }
 
   setCuratorBusy(true);
-  setCuratorStatus("Saving override...", "neutral");
+  setCuratorStatus("Submitting override to moderation queue...", "neutral");
 
   try {
     const payload = collectCuratorPayload();
@@ -1076,23 +1432,17 @@ async function saveCuratorOverride(artifactId) {
     }
 
     const data = await response.json();
-    state.cmsOverrides[artifactId] = data.override;
-    applyOverrides(state.cmsOverrides);
-    renderGallery();
-    renderStoryPanel();
-    renderHotspotList();
-    renderCompareList();
-    renderCuratorArtifactOptions();
-    populateCuratorForm(artifactId);
-
-    if (artifactId === state.currentArtifactId) {
-      await loadArtifact(artifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    if (state.moderationOpen) {
+      await loadModerationData();
     }
 
-    setCuratorStatus("Override saved successfully.", "success");
-    trackEvent("curator_override_saved", { artifactId });
+    setCuratorStatus(`Submitted for review (${data.submission?.id ?? "queued"}).`, "success");
+    trackEvent("curator_submission_created", {
+      artifactId,
+      submissionId: data.submission?.id ?? null
+    });
   } catch (error) {
-    setCuratorStatus(`Save failed: ${error.message}`, "error");
+    setCuratorStatus(`Submit failed: ${error.message}`, "error");
   } finally {
     setCuratorBusy(false);
   }
@@ -1105,7 +1455,7 @@ async function deleteCuratorOverride(artifactId) {
   }
 
   setCuratorBusy(true);
-  setCuratorStatus("Deleting override...", "neutral");
+  setCuratorStatus("Submitting delete request to moderation queue...", "neutral");
 
   try {
     const response = await fetch(`/api/cms/overrides/${encodeURIComponent(artifactId)}`, {
@@ -1118,22 +1468,18 @@ async function deleteCuratorOverride(artifactId) {
       throw new Error(error.error || `request_failed_${response.status}`);
     }
 
-    delete state.cmsOverrides[artifactId];
-    applyOverrides(state.cmsOverrides);
-    renderGallery();
-    renderStoryPanel();
-    renderHotspotList();
-    renderCompareList();
-    populateCuratorForm(artifactId);
-
-    if (artifactId === state.currentArtifactId) {
-      await loadArtifact(artifactId, { restoreFromUrl: false, skipCompareReload: !state.compareEnabled });
+    const data = await response.json();
+    if (state.moderationOpen) {
+      await loadModerationData();
     }
 
-    setCuratorStatus("Override deleted.", "success");
-    trackEvent("curator_override_deleted", { artifactId });
+    setCuratorStatus(`Delete request submitted (${data.submission?.id ?? "queued"}).`, "success");
+    trackEvent("curator_delete_submission_created", {
+      artifactId,
+      submissionId: data.submission?.id ?? null
+    });
   } catch (error) {
-    setCuratorStatus(`Delete failed: ${error.message}`, "error");
+    setCuratorStatus(`Delete request failed: ${error.message}`, "error");
   } finally {
     setCuratorBusy(false);
   }
@@ -1146,6 +1492,9 @@ function setShortcutsOpen(open, options = {}) {
   if (state.shortcutsOpen) {
     if (state.curatorOpen) {
       setCuratorOpen(false, { skipTrack: true });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { skipTrack: true });
     }
     elements.shortcutsCloseBtn.focus();
   } else {
@@ -1531,6 +1880,13 @@ function handleViewerCameraChange(source) {
 
 function handleKeydown(event) {
   if (event.key === "Escape") {
+    if (state.moderationOpen) {
+      event.preventDefault();
+      setModerationOpen(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_moderation" });
+      return;
+    }
+
     if (state.curatorOpen) {
       event.preventDefault();
       setCuratorOpen(false, { source: "keyboard" });
@@ -1558,7 +1914,7 @@ function handleKeydown(event) {
   }
 
   if (event.key === "?") {
-    if (state.curatorOpen) {
+    if (state.curatorOpen || state.moderationOpen) {
       return;
     }
     event.preventDefault();
@@ -1568,6 +1924,10 @@ function handleKeydown(event) {
   }
 
   if (state.curatorOpen) {
+    return;
+  }
+
+  if (state.moderationOpen) {
     return;
   }
 

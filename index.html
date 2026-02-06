@@ -78,6 +78,7 @@
             <button id="compareBtn" class="icon-btn" title="Toggle compare mode" aria-label="Toggle compare mode">Compare</button>
             <button id="syncBtn" class="icon-btn" title="Toggle compare sync" aria-label="Toggle compare sync" hidden>Sync On</button>
             <button id="curatorBtn" class="icon-btn" title="Open curator editor" aria-label="Open curator editor">Curator</button>
+            <button id="moderationBtn" class="icon-btn" title="Open moderation queue" aria-label="Open moderation queue">Moderation</button>
             <button id="shortcutsBtn" class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">Shortcuts</button>
             <button id="fullscreenBtn" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">Fullscreen</button>
             <button id="shareBtn" class="icon-btn" title="Copy share link" aria-label="Copy share link">Share</button>
@@ -211,6 +212,53 @@
               <button id="curatorSaveBtn" class="chip-btn is-active" type="submit">Save Override</button>
             </div>
           </form>
+        </div>
+
+        <div id="moderationModal" class="shortcuts-modal curator-modal" hidden>
+          <div class="shortcuts-card curator-card glass" role="dialog" aria-modal="true" aria-labelledby="moderationTitle">
+            <div class="shortcuts-head">
+              <h2 id="moderationTitle" class="shortcuts-title">Community Moderation</h2>
+              <div class="curator-head-actions">
+                <button id="moderationCloseBtn" class="chip-btn" type="button" aria-label="Close moderation">Close</button>
+              </div>
+            </div>
+            <p class="curator-note">All curator submissions are anonymous and reviewed here before going live.</p>
+
+            <div class="curator-grid">
+              <div class="curator-row">
+                <label class="curator-field">
+                  <span>Moderation Token</span>
+                  <input id="moderationTokenInput" class="search-input" type="password" placeholder="Optional bearer token" />
+                </label>
+                <label class="curator-field">
+                  <span>Review Note</span>
+                  <input id="moderationReasonInput" class="search-input" type="text" placeholder="Optional approve/reject reason" />
+                </label>
+              </div>
+              <div class="curator-row">
+                <label class="curator-field">
+                  <span>Revisions Artifact</span>
+                  <select id="moderationArtifactSelect" class="sort-select"></select>
+                </label>
+                <div class="curator-field">
+                  <span>&nbsp;</span>
+                  <button id="moderationRefreshBtn" class="chip-btn" type="button">Refresh Queue</button>
+                </div>
+              </div>
+            </div>
+
+            <section class="curator-hotspots">
+              <p class="panel-label">Pending Submissions</p>
+              <div id="moderationPendingList" class="curator-hotspots-list"></div>
+            </section>
+
+            <section class="curator-hotspots">
+              <p class="panel-label">Revision History</p>
+              <div id="moderationRevisionsList" class="curator-hotspots-list"></div>
+            </section>
+
+            <p id="moderationStatus" class="curator-status" aria-live="polite"></p>
+          </div>
         </div>
 
         <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

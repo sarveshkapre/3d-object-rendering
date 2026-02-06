@@ -18,6 +18,7 @@ Minimalist white-space 3D artifact experience with:
 - Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
+- Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
 
 ## Run
 
@@ -64,14 +65,27 @@ The API runs with frontend in `npm run dev`.
 - Analytics ingest: `POST /api/analytics/ingest`
 - Analytics counters: `GET /api/analytics/counters`
 - CMS overrides read: `GET /api/cms/overrides`
-- CMS overrides write: `PUT /api/cms/overrides/:artifactId`
-- CMS overrides delete: `DELETE /api/cms/overrides/:artifactId`
+- CMS submissions create/update: `PUT /api/cms/overrides/:artifactId` (queued, not instantly live)
+- CMS submissions create/delete request: `DELETE /api/cms/overrides/:artifactId` (queued, not instantly live)
+- CMS pending queue: `GET /api/cms/submissions?status=pending`
+- CMS approve submission: `POST /api/cms/submissions/:submissionId/approve`
+- CMS reject submission: `POST /api/cms/submissions/:submissionId/reject`
+- CMS revisions by artifact: `GET /api/cms/revisions/:artifactId`
+- CMS restore revision: `POST /api/cms/revisions/:artifactId/:revisionId/restore`
 
 Curator editor supports:
 
 - Artifact metadata (`title`, `hook`, `keywords`, `releaseYear`, `featuredRank`)
 - Story content (`title`, `summary`, `body`, `references`)
 - Hotspot copy (`label`, `title`, `body`, `reference`) keyed by hotspot id
+
+Moderation flow:
+
+1. Curator submits anonymous change request.
+2. Request appears in pending moderation queue.
+3. Moderator approves/rejects (open by default; optional token lock).
+4. Approved changes become live and create a revision snapshot.
+5. Any revision can be restored.
 
 Local persistent file:
 
