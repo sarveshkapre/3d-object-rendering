@@ -22,6 +22,7 @@ Minimalist white-space 3D artifact experience with:
 - Keyboard shortcuts (`Cmd/Ctrl+K` focus search, `T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
 - Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
 - Live session insights panel (views, hotspot engagement, compare sessions, compare partner leaderboard, tour usage, shares) with auto-refreshing server metrics
+- Insights delta badges that show metric movement since the previous server poll
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
@@ -43,12 +44,20 @@ npm run build
 npm run preview
 ```
 
+## Verify
+
+```bash
+npm test
+npm run smoke:api
+```
+
 ## Notes
 
 - Models are loaded locally from `public/models`.
 - URLs are updated in place so any current view can be shared directly.
 - Build output is split with a dedicated Three.js vendor chunk for better browser caching.
 - `Popularity` sort uses persistent analytics counters when API is available (fallback: in-session metrics).
+- API store writes are serialized to protect analytics and CMS data from concurrent request clobbering.
 
 ## Kiosk Idle Reset
 

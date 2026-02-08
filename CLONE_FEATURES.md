@@ -7,9 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- `insights-trendlines`: Attach small sparklines or delta indicators to the insights chips so kiosk staff can see whether engagement metrics are trending up or down between server polls.
+- [ ] `insights-sparkline-history` (P1): Keep the last N poll snapshots and render tiny per-metric sparklines so trend direction is visible even when deltas net to zero.
+- [ ] `cms-input-guards` (P1): Enforce URL/protocol allowlists and max field lengths on CMS payloads to reduce malformed or unsafe curator submissions.
+- [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
 
 ## Implemented
+- 2026-02-08 · `store-concurrency-guard`: Replaced per-request file loading with an in-memory store plus serialized mutation queue, and fixed data directory creation to respect custom `API_STORE_PATH` values. Evidence: `server/index.js`, `npm test`, `npm run smoke:api`.
+- 2026-02-08 · `server-regression-tests`: Added Node integration coverage for parallel analytics ingest and CMS approve/delete/restore flows (including auth checks) by launching the real API process. Evidence: `server/index.test.js`, `package.json`, `npm test`.
+- 2026-02-08 · `insights-trend-deltas`: Added per-metric delta badges in the insights panel and snapshot diffing logic so kiosk staff can see change since the previous poll. Evidence: `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
+- 2026-02-08 · `api-smoke-script`: Added a maintainers' smoke command that boots the API on a temporary port/store and validates health + analytics endpoints with real HTTP calls. Evidence: `scripts/smoke-api.mjs`, `package.json`, `npm run smoke:api`.
+- 2026-02-08 · `docs-and-tracker-sync`: Updated runbook docs for verification commands and captured cycle outcomes/backlog updates in the tracker. Evidence: `README.md`, `CLONE_FEATURES.md`.
 - 2026-02-08 · `compare-sync-memory`: Persisted compare partners per artifact and the sync toggle preference in local storage, respected deep links without clobbering user overrides, refreshed idle reset and docs so compare mode reopens in the last-used configuration. Evidence: `src/main.js`, `README.md`, `npm run build`.
 - 2026-02-08 · `compare-insights`: Added compare session tracking, a top partner leaderboard, and analytics plumbing so the insights panel reflects how often visitors pair each artifact. Evidence: `src/main.js`, `src/style.css`, `server/index.js`, `README.md`, `npm run build`.
 - 2026-02-08 · `moderation-diff-highlights`: Rebuilt the moderation diff viewer with syntax-highlighted JSON, inline field callouts, and before/after summaries so reviewers can decide faster without parsing raw blobs. Evidence: `index.html`, `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
@@ -32,6 +39,9 @@
 - Hotspot keyboard access previously failed because focus stayed behind hidden elements; roving tab indexes keep the list operable for ADA/Section 508 reviews and stop kiosks from forcing users back to the mouse.
 - Analytics counters were previously captured only at load, so kiosks drifted from actual server totals after long runs; background refresh tied to the Page Visibility API keeps numbers trustworthy without hammering hidden tabs.
 - Compare pair telemetry needed to live next to the rest of the kiosk insights; surfacing pair counts and partner rankings keeps docents informed when visitors repeatedly contrast the same artifacts.
+- Concurrent API writes are common when kiosks run for long sessions; serializing store mutations and proving it with parallel-ingest tests prevents subtle data loss that would otherwise invalidate popularity and moderation analytics.
+- Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
+- A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
