@@ -17,6 +17,9 @@ const BASE_STORE = {
     artifacts: {}
   }
 };
+let storeCache = null;
+let storeLoadPromise = null;
+let storeMutationQueue = Promise.resolve();
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -152,21 +155,59 @@ function normalizeStore(parsed) {
   };
 }
 
-async function ensureStore() {
-  await mkdir(resolve(__dirname, "data"), { recursive: true });
-
-  try {
-    const raw = await readFile(storePath, "utf-8");
-    const parsed = JSON.parse(raw);
-    return normalizeStore(parsed);
-  } catch {
-    await writeFile(storePath, JSON.stringify(BASE_STORE, null, 2));
-    return structuredClone(BASE_STORE);
+async function loadStore() {
+  if (storeCache) {
+    return storeCache;
   }
+
+  if (storeLoadPromise) {
+    return storeLoadPromise;
+  }
+
+  storeLoadPromise = (async () => {
+    await mkdir(dirname(storePath), { recursive: true });
+
+    try {
+      const raw = await readFile(storePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      storeCache = normalizeStore(parsed);
+    } catch {
+      storeCache = structuredClone(BASE_STORE);
+      await writeFile(storePath, JSON.stringify(storeCache, null, 2));
+    }
+
+    return storeCache;
+  })();
+
+  return storeLoadPromise;
 }
 
-async function saveStore(store) {
-  await writeFile(storePath, JSON.stringify(store, null, 2));
+async function persistStore() {
+  if (!storeCache) {
+    return;
+  }
+  await writeFile(storePath, JSON.stringify(storeCache, null, 2));
+}
+
+function queueStoreMutation(mutator) {
+  const runMutation = async () => {
+    const store = await loadStore();
+    const result = await mutator(store);
+    await persistStore();
+    return result;
+  };
+
+  const task = storeMutationQueue.then(runMutation, runMutation);
+  storeMutationQueue = task.then(
+    () => undefined,
+    () => undefined
+  );
+  return task;
+}
+
+async function getStoreSnapshot() {
+  await storeMutationQueue;
+  return await loadStore();
 }
 
 async function parseRequestBody(req) {
@@ -313,8 +354,6 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const store = await ensureStore();
-
   if (method === "GET" && url.pathname === "/api/health") {
     json(res, 200, {
       ok: true,
@@ -325,6 +364,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/analytics/counters") {
+    const store = await getStoreSnapshot();
     json(res, 200, {
       artifacts: store.analytics.artifacts,
       eventsStored: store.analytics.events.length
@@ -345,22 +385,24 @@ const server = createServer(async (req, res) => {
         }))
         .filter((event) => Boolean(event.event));
 
-      for (const event of normalizedEvents) {
-        applyAnalyticsEvent(store, event);
+      if (normalizedEvents.length) {
+        await queueStoreMutation((store) => {
+          for (const event of normalizedEvents) {
+            applyAnalyticsEvent(store, event);
+          }
+
+          store.analytics.events.push(
+            ...normalizedEvents.map((event) => ({
+              ...event,
+              receivedAt: new Date().toISOString()
+            }))
+          );
+
+          if (store.analytics.events.length > 3000) {
+            store.analytics.events = store.analytics.events.slice(-3000);
+          }
+        });
       }
-
-      store.analytics.events.push(
-        ...normalizedEvents.map((event) => ({
-          ...event,
-          receivedAt: new Date().toISOString()
-        }))
-      );
-
-      if (store.analytics.events.length > 3000) {
-        store.analytics.events = store.analytics.events.slice(-3000);
-      }
-
-      await saveStore(store);
 
       json(res, 200, {
         ok: true,
@@ -376,11 +418,13 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/cms/overrides") {
+    const store = await getStoreSnapshot();
     json(res, 200, { overrides: store.overrides });
     return;
   }
 
   if (method === "GET" && url.pathname === "/api/cms/submissions") {
+    const store = await getStoreSnapshot();
     const statusFilter = url.searchParams.get("status") || "pending";
     const includeOverride = url.searchParams.get("include") === "override";
     const submissions = store.submissions
@@ -395,6 +439,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/cms/recent-updates") {
+    const store = await getStoreSnapshot();
     const limit = Number(url.searchParams.get("limit") || 20);
     const updates = getRecentUpdates(store, { limit });
 
@@ -405,6 +450,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname.startsWith("/api/cms/revisions/")) {
+    const store = await getStoreSnapshot();
     const artifactId = decodeURIComponent(url.pathname.replace("/api/cms/revisions/", "")).trim();
     const revisions = Array.isArray(store.revisions[artifactId]) ? store.revisions[artifactId] : [];
 
@@ -428,18 +474,20 @@ const server = createServer(async (req, res) => {
     try {
       const body = await parseRequestBody(req);
       const override = mergeOverride({}, body);
-      const submission = createSubmission({
-        artifactId,
-        operation: "upsert",
-        override
+      const submission = await queueStoreMutation((store) => {
+        const nextSubmission = createSubmission({
+          artifactId,
+          operation: "upsert",
+          override
+        });
+
+        store.submissions.push(nextSubmission);
+        if (store.submissions.length > 3000) {
+          store.submissions = store.submissions.slice(-3000);
+        }
+
+        return nextSubmission;
       });
-
-      store.submissions.push(submission);
-      if (store.submissions.length > 3000) {
-        store.submissions = store.submissions.slice(-3000);
-      }
-
-      await saveStore(store);
 
       json(res, 200, {
         ok: true,
@@ -470,12 +518,12 @@ const server = createServer(async (req, res) => {
       override: null
     });
 
-    store.submissions.push(submission);
-    if (store.submissions.length > 3000) {
-      store.submissions = store.submissions.slice(-3000);
-    }
-
-    await saveStore(store);
+    await queueStoreMutation((store) => {
+      store.submissions.push(submission);
+      if (store.submissions.length > 3000) {
+        store.submissions = store.submissions.slice(-3000);
+      }
+    });
 
     json(res, 200, {
       ok: true,
@@ -490,52 +538,63 @@ const server = createServer(async (req, res) => {
     }
 
     const submissionId = decodeURIComponent(url.pathname.replace("/api/cms/submissions/", "").replace("/approve", "")).trim();
-    const submission = store.submissions.find((item) => item.id === submissionId);
+    const body = await parseRequestBody(req).catch(() => ({}));
+    const reason = typeof body.reason === "string" ? body.reason : "";
+    const result = await queueStoreMutation((store) => {
+      const submission = store.submissions.find((item) => item.id === submissionId);
+      if (!submission || submission.status !== "pending") {
+        return {
+          ok: false,
+          error: "pending_submission_not_found"
+        };
+      }
 
-    if (!submission || submission.status !== "pending") {
+      const beforeOverride = store.overrides[submission.artifactId] ? structuredClone(store.overrides[submission.artifactId]) : null;
+      let afterOverride = null;
+
+      if (submission.operation === "delete") {
+        delete store.overrides[submission.artifactId];
+      } else {
+        const merged = mergeOverride(beforeOverride ?? {}, submission.override ?? {});
+        store.overrides[submission.artifactId] = merged;
+        afterOverride = structuredClone(merged);
+      }
+
+      submission.status = "approved";
+      submission.reason = reason;
+      submission.reviewedAt = new Date().toISOString();
+
+      appendRevision(store, submission.artifactId, {
+        id: createId("rev"),
+        artifactId: submission.artifactId,
+        action: "approve_submission",
+        submissionId: submission.id,
+        operation: submission.operation,
+        reason,
+        before: beforeOverride,
+        after: afterOverride,
+        createdAt: new Date().toISOString()
+      });
+
+      return {
+        ok: true,
+        submission: getSubmissionPreview(submission),
+        override: afterOverride
+      };
+    });
+
+    if (!result.ok) {
       json(res, 404, {
         ok: false,
-        error: "pending_submission_not_found"
+        error: result.error
       });
       return;
     }
 
-    const body = await parseRequestBody(req).catch(() => ({}));
-    const reason = typeof body.reason === "string" ? body.reason : "";
-
-    const beforeOverride = store.overrides[submission.artifactId] ? structuredClone(store.overrides[submission.artifactId]) : null;
-    let afterOverride = null;
-
-    if (submission.operation === "delete") {
-      delete store.overrides[submission.artifactId];
-    } else {
-      const merged = mergeOverride(beforeOverride ?? {}, submission.override ?? {});
-      store.overrides[submission.artifactId] = merged;
-      afterOverride = structuredClone(merged);
-    }
-
-    submission.status = "approved";
-    submission.reason = reason;
-    submission.reviewedAt = new Date().toISOString();
-
-    appendRevision(store, submission.artifactId, {
-      id: createId("rev"),
-      artifactId: submission.artifactId,
-      action: "approve_submission",
-      submissionId: submission.id,
-      operation: submission.operation,
-      reason,
-      before: beforeOverride,
-      after: afterOverride,
-      createdAt: new Date().toISOString()
-    });
-
-    await saveStore(store);
-
     json(res, 200, {
       ok: true,
-      submission: getSubmissionPreview(submission),
-      override: afterOverride
+      submission: result.submission,
+      override: result.override
     });
     return;
   }
@@ -546,26 +605,37 @@ const server = createServer(async (req, res) => {
     }
 
     const submissionId = decodeURIComponent(url.pathname.replace("/api/cms/submissions/", "").replace("/reject", "")).trim();
-    const submission = store.submissions.find((item) => item.id === submissionId);
+    const body = await parseRequestBody(req).catch(() => ({}));
+    const result = await queueStoreMutation((store) => {
+      const submission = store.submissions.find((item) => item.id === submissionId);
+      if (!submission || submission.status !== "pending") {
+        return {
+          ok: false,
+          error: "pending_submission_not_found"
+        };
+      }
 
-    if (!submission || submission.status !== "pending") {
+      submission.status = "rejected";
+      submission.reason = typeof body.reason === "string" ? body.reason : "";
+      submission.reviewedAt = new Date().toISOString();
+
+      return {
+        ok: true,
+        submission: getSubmissionPreview(submission)
+      };
+    });
+
+    if (!result.ok) {
       json(res, 404, {
         ok: false,
-        error: "pending_submission_not_found"
+        error: result.error
       });
       return;
     }
 
-    const body = await parseRequestBody(req).catch(() => ({}));
-    submission.status = "rejected";
-    submission.reason = typeof body.reason === "string" ? body.reason : "";
-    submission.reviewedAt = new Date().toISOString();
-
-    await saveStore(store);
-
     json(res, 200, {
       ok: true,
-      submission: getSubmissionPreview(submission)
+      submission: result.submission
     });
     return;
   }
@@ -579,48 +649,60 @@ const server = createServer(async (req, res) => {
     const [artifactIdRaw, revisionIdRaw] = pathWithoutPrefix.split("/");
     const artifactId = decodeURIComponent(artifactIdRaw || "").trim();
     const revisionId = decodeURIComponent(revisionIdRaw || "").trim();
+    const body = await parseRequestBody(req).catch(() => ({}));
+    const reason = typeof body.reason === "string" ? body.reason : "";
+    const result = await queueStoreMutation((store) => {
+      const revisions = Array.isArray(store.revisions[artifactId]) ? store.revisions[artifactId] : [];
+      const revision = revisions.find((entry) => entry.id === revisionId);
 
-    const revisions = Array.isArray(store.revisions[artifactId]) ? store.revisions[artifactId] : [];
-    const revision = revisions.find((entry) => entry.id === revisionId);
+      if (!revision) {
+        return {
+          ok: false,
+          error: "revision_not_found"
+        };
+      }
 
-    if (!revision) {
+      const beforeOverride = store.overrides[artifactId] ? structuredClone(store.overrides[artifactId]) : null;
+      const afterOverride = revision.after ? structuredClone(revision.after) : null;
+
+      if (afterOverride) {
+        store.overrides[artifactId] = afterOverride;
+      } else {
+        delete store.overrides[artifactId];
+      }
+
+      appendRevision(store, artifactId, {
+        id: createId("rev"),
+        artifactId,
+        action: "restore_revision",
+        sourceRevisionId: revisionId,
+        reason,
+        before: beforeOverride,
+        after: afterOverride,
+        createdAt: new Date().toISOString()
+      });
+
+      return {
+        ok: true,
+        artifactId,
+        revisionId,
+        override: afterOverride
+      };
+    });
+
+    if (!result.ok) {
       json(res, 404, {
         ok: false,
-        error: "revision_not_found"
+        error: result.error
       });
       return;
     }
 
-    const body = await parseRequestBody(req).catch(() => ({}));
-    const reason = typeof body.reason === "string" ? body.reason : "";
-
-    const beforeOverride = store.overrides[artifactId] ? structuredClone(store.overrides[artifactId]) : null;
-    const afterOverride = revision.after ? structuredClone(revision.after) : null;
-
-    if (afterOverride) {
-      store.overrides[artifactId] = afterOverride;
-    } else {
-      delete store.overrides[artifactId];
-    }
-
-    appendRevision(store, artifactId, {
-      id: createId("rev"),
-      artifactId,
-      action: "restore_revision",
-      sourceRevisionId: revisionId,
-      reason,
-      before: beforeOverride,
-      after: afterOverride,
-      createdAt: new Date().toISOString()
-    });
-
-    await saveStore(store);
-
     json(res, 200, {
       ok: true,
-      artifactId,
-      revisionId,
-      override: afterOverride
+      artifactId: result.artifactId,
+      revisionId: result.revisionId,
+      override: result.override
     });
     return;
   }
