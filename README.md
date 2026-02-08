@@ -25,7 +25,7 @@ Minimalist white-space 3D artifact experience with:
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
-- Side-by-side moderation diff preview and reviewed decision log with rejection notes
+- Side-by-side moderation diff preview with syntax-highlighted JSON, inline field callouts, and reviewed decision log with rejection notes
 - Public recent updates feed sourced from revision history
 
 ## Run

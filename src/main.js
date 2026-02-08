@@ -125,6 +125,7 @@ const elements = {
   moderationRefreshBtn: document.getElementById("moderationRefreshBtn"),
   moderationPendingList: document.getElementById("moderationPendingList"),
   moderationDiffSummary: document.getElementById("moderationDiffSummary"),
+  moderationDiffCallouts: document.getElementById("moderationDiffCallouts"),
   moderationDiffBefore: document.getElementById("moderationDiffBefore"),
   moderationDiffAfter: document.getElementById("moderationDiffAfter"),
   moderationDecisionsList: document.getElementById("moderationDecisionsList"),
@@ -1320,7 +1321,7 @@ function renderModerationPendingList() {
       const preview = submission.operation === "delete" ? "Delete live override" : "Update override";
       const selectedClass = submission.id === state.moderationSelectedSubmissionId ? "is-selected" : "";
       const diff = getSubmissionDiffModel(submission);
-      const changedFieldsText = diff.changedPaths.length ? `${diff.changedPaths.length} changed fields` : "No effective changes";
+      const changedFieldsText = diff.entries.length ? `${diff.entries.length} field${diff.entries.length === 1 ? "" : "s"} touched` : "No effective changes";
       return `
         <div class="curator-hotspot ${selectedClass}" data-select-submission="${escapeHtml(submission.id)}">
           <p class="curator-hotspot-title">${escapeHtml(submission.id)}</p>
@@ -1355,6 +1356,9 @@ function renderModerationDiffPanel() {
     elements.moderationDiffSummary.textContent = "No pending submission selected.";
     elements.moderationDiffBefore.textContent = "{}";
     elements.moderationDiffAfter.textContent = "{}";
+    if (elements.moderationDiffCallouts) {
+      elements.moderationDiffCallouts.innerHTML = '<p class="insights-empty">No effective field changes.</p>';
+    }
     return;
   }
 
@@ -1364,14 +1368,71 @@ function renderModerationDiffPanel() {
     elements.moderationDiffSummary.textContent = "No pending submission selected.";
     elements.moderationDiffBefore.textContent = "{}";
     elements.moderationDiffAfter.textContent = "{}";
+    if (elements.moderationDiffCallouts) {
+      elements.moderationDiffCallouts.innerHTML = '<p class="insights-empty">No effective field changes.</p>';
+    }
     return;
   }
 
   const diff = getSubmissionDiffModel(selected);
-  const changedFields = diff.changedPaths.length ? diff.changedPaths.join(", ") : "No effective field change";
-  elements.moderationDiffSummary.textContent = `${selected.artifactId} · ${selected.operation} · ${changedFields}`;
-  elements.moderationDiffBefore.textContent = formatJsonCode(diff.beforeOverride);
-  elements.moderationDiffAfter.textContent = formatJsonCode(diff.afterOverride);
+  const changedLabel = diff.entries.length
+    ? `${diff.entries.length} field${diff.entries.length === 1 ? "" : "s"} touched`
+    : "No effective field change";
+  elements.moderationDiffSummary.textContent = `${selected.artifactId} · ${selected.operation} · ${changedLabel}`;
+  elements.moderationDiffBefore.innerHTML = formatJsonDiffHtml(diff.beforeOverride, diff.entries, { view: "before" });
+  elements.moderationDiffAfter.innerHTML = formatJsonDiffHtml(diff.afterOverride, diff.entries, { view: "after" });
+  renderModerationDiffCallouts(diff);
+}
+
+function renderModerationDiffCallouts(diffModel) {
+  if (!elements.moderationDiffCallouts) {
+    return;
+  }
+
+  if (!diffModel.entries.length) {
+    elements.moderationDiffCallouts.innerHTML = '<p class="insights-empty">No effective field changes.</p>';
+    return;
+  }
+
+  const sortedEntries = [...diffModel.entries].sort((a, b) => {
+    const typeOrder = { updated: 0, added: 1, removed: 2 };
+    const orderDelta = (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3);
+    if (orderDelta !== 0) {
+      return orderDelta;
+    }
+    return a.path.localeCompare(b.path);
+  });
+
+  elements.moderationDiffCallouts.innerHTML = sortedEntries
+    .map((entry) => {
+      const beforeValue = getValueAtPath(diffModel.beforeOverride, entry.path);
+      const afterValue = getValueAtPath(diffModel.afterOverride, entry.path);
+      const typeLabel = entry.type === "added" ? "Added" : entry.type === "removed" ? "Removed" : "Updated";
+      const icon = entry.type === "added" ? "+" : entry.type === "removed" ? "−" : "Δ";
+      const beforeMarkup =
+        entry.type !== "added"
+          ? `<p class="moderation-callout-value"><span>Before:</span> ${escapeHtml(formatValuePreview(beforeValue))}</p>`
+          : "";
+      const afterMarkup =
+        entry.type !== "removed"
+          ? `<p class="moderation-callout-value"><span>${entry.type === "added" ? "New Value" : "After"}:</span> ${escapeHtml(
+              formatValuePreview(afterValue)
+            )}</p>`
+          : "";
+
+      return `
+        <div class="moderation-callout diff-${entry.type}">
+          <div class="moderation-callout-head">
+            <span class="moderation-callout-icon">${icon}</span>
+            <span class="moderation-callout-type">${escapeHtml(typeLabel)}</span>
+            <span class="moderation-callout-path">${escapeHtml(entry.path)}</span>
+          </div>
+          ${beforeMarkup}
+          ${afterMarkup}
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderModerationDecisionsList() {
@@ -1427,15 +1488,15 @@ function renderModerationRevisions() {
 }
 
 function getSubmissionDiffModel(submission) {
-  const beforeOverride = state.cmsOverrides[submission.artifactId] ? structuredClone(state.cmsOverrides[submission.artifactId]) : null;
+  const beforeOverride = state.cmsOverrides[submission.artifactId] ? structuredClone(state.cmsOverrides[submission.artifactId]) : undefined;
   const afterOverride =
-    submission.operation === "delete" ? null : applySubmissionPreviewOverride(beforeOverride ?? {}, submission.override ?? {});
-  const changedPaths = collectDiffPaths(beforeOverride ?? {}, afterOverride ?? {});
+    submission.operation === "delete" ? undefined : applySubmissionPreviewOverride(beforeOverride ?? {}, submission.override ?? {});
+  const entries = dedupeDiffEntries(collectDiffEntries(beforeOverride, afterOverride));
 
   return {
     beforeOverride,
     afterOverride,
-    changedPaths
+    entries
   };
 }
 
@@ -1452,40 +1513,278 @@ function applySubmissionPreviewOverride(existing, update) {
   return next;
 }
 
-function collectDiffPaths(before, after, prefix = "") {
+function collectDiffEntries(before, after, path = "(root)") {
+  const entries = [];
+  const beforeExists = before !== undefined;
+  const afterExists = after !== undefined;
+
   if (before === after) {
-    return [];
+    return entries;
   }
 
-  if (Array.isArray(before) || Array.isArray(after)) {
-    const beforeEncoded = JSON.stringify(before ?? null);
-    const afterEncoded = JSON.stringify(after ?? null);
-    return beforeEncoded === afterEncoded ? [] : [prefix || "(root)"];
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const maxLength = Math.max(before.length, after.length);
+    if (before.length !== after.length) {
+      entries.push({ path, type: "updated" });
+    }
+    for (let index = 0; index < maxLength; index += 1) {
+      const childPath = makeChildPath(path, index, true);
+      if (index >= before.length) {
+        entries.push({ path: childPath, type: "added" });
+        entries.push(...collectDiffEntries(undefined, after[index], childPath));
+        continue;
+      }
+      if (index >= after.length) {
+        entries.push({ path: childPath, type: "removed" });
+        entries.push(...collectDiffEntries(before[index], undefined, childPath));
+        continue;
+      }
+      entries.push(...collectDiffEntries(before[index], after[index], childPath));
+    }
+    return entries;
   }
 
   if (isPlainObject(before) && isPlainObject(after)) {
     const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    const paths = [];
-
     for (const key of keys) {
-      const nextPrefix = prefix ? `${prefix}.${key}` : key;
-      paths.push(...collectDiffPaths(before[key], after[key], nextPrefix));
+      const childPath = makeChildPath(path, key, false);
+      if (!Object.prototype.hasOwnProperty.call(after, key)) {
+        entries.push({ path: childPath, type: "removed" });
+        entries.push(...collectDiffEntries(before[key], undefined, childPath));
+        continue;
+      }
+      if (!Object.prototype.hasOwnProperty.call(before, key)) {
+        entries.push({ path: childPath, type: "added" });
+        entries.push(...collectDiffEntries(undefined, after[key], childPath));
+        continue;
+      }
+      entries.push(...collectDiffEntries(before[key], after[key], childPath));
     }
+    return entries;
+  }
 
-    return paths;
+  if (!beforeExists && afterExists) {
+    entries.push({ path, type: "added" });
+    if (Array.isArray(after)) {
+      after.forEach((value, index) => {
+        const childPath = makeChildPath(path, index, true);
+        entries.push(...collectDiffEntries(undefined, value, childPath));
+      });
+    } else if (isPlainObject(after)) {
+      for (const key of Object.keys(after)) {
+        const childPath = makeChildPath(path, key, false);
+        entries.push(...collectDiffEntries(undefined, after[key], childPath));
+      }
+    }
+    return entries;
+  }
+
+  if (beforeExists && !afterExists) {
+    entries.push({ path, type: "removed" });
+    if (Array.isArray(before)) {
+      before.forEach((value, index) => {
+        const childPath = makeChildPath(path, index, true);
+        entries.push(...collectDiffEntries(value, undefined, childPath));
+      });
+    } else if (isPlainObject(before)) {
+      for (const key of Object.keys(before)) {
+        const childPath = makeChildPath(path, key, false);
+        entries.push(...collectDiffEntries(before[key], undefined, childPath));
+      }
+    }
+    return entries;
   }
 
   const beforeEncoded = JSON.stringify(before ?? null);
   const afterEncoded = JSON.stringify(after ?? null);
-  return beforeEncoded === afterEncoded ? [] : [prefix || "(root)"];
+  if (beforeEncoded !== afterEncoded) {
+    entries.push({ path, type: "updated" });
+  }
+  return entries;
+}
+
+function dedupeDiffEntries(entries = []) {
+  const seen = new Map();
+  for (const entry of entries) {
+    if (!entry || !entry.path || !entry.type) {
+      continue;
+    }
+    const key = `${entry.path}__${entry.type}`;
+    if (!seen.has(key)) {
+      seen.set(key, entry);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function makeChildPath(parentPath, key, isArray) {
+  if (!parentPath || parentPath === "(root)") {
+    return isArray ? `[${key}]` : String(key);
+  }
+  return isArray ? `${parentPath}[${key}]` : `${parentPath}.${key}`;
 }
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function formatJsonCode(value) {
-  return JSON.stringify(value ?? null, null, 2);
+function formatJsonDiffHtml(value, diffEntries, options = {}) {
+  const view = options.view === "after" ? "after" : "before";
+  const entries = Array.isArray(diffEntries) ? diffEntries : [];
+  const lines = renderJsonLines(value ?? null, "(root)", 0);
+  const highlightLookup = createDiffHighlightLookup(entries, view);
+
+  return lines
+    .map((line) => {
+      const highlight = highlightLookup.get(line.path);
+      const content = line.text;
+      if (!highlight) {
+        return content;
+      }
+      return `<span class="diff-line diff-${highlight}">${content}</span>`;
+    })
+    .join("\n");
+}
+
+function createDiffHighlightLookup(entries, view) {
+  const lookup = new Map();
+  for (const entry of entries) {
+    if (!entry || !entry.path || !entry.type) {
+      continue;
+    }
+    if (view === "before" && entry.type === "added") {
+      continue;
+    }
+    if (view === "after" && entry.type === "removed") {
+      continue;
+    }
+    if (!lookup.has(entry.path) || entry.type === "updated") {
+      lookup.set(entry.path, entry.type);
+    }
+  }
+  return lookup;
+}
+
+function renderJsonLines(value, path, depth) {
+  const indentUnit = "  ";
+  const indent = indentUnit.repeat(depth);
+
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return [{ path, text: `${indent}[]` }];
+    }
+    const lines = [{ path, text: `${indent}[` }];
+    value.forEach((entry, index) => {
+      const childPath = makeChildPath(path, index, true);
+      const childLines = renderJsonLines(entry, childPath, depth + 1);
+      lines.push(...childLines);
+      if (index < value.length - 1) {
+        lines[lines.length - 1].text += ",";
+      }
+    });
+    lines.push({ path, text: `${indent}]` });
+    return lines;
+  }
+
+  if (isPlainObject(value)) {
+    const entries = Object.entries(value);
+    if (!entries.length) {
+      return [{ path, text: `${indent}{}` }];
+    }
+    const lines = [{ path, text: `${indent}{` }];
+    entries.forEach(([key, childValue], index) => {
+      const childPath = makeChildPath(path, key, false);
+      const childLines = renderJsonLines(childValue, childPath, depth + 1);
+      if (!childLines.length) {
+        lines.push({
+          path: childPath,
+          text: `${indent}${indentUnit}${formatJsonKey(key)}: ${formatPrimitiveValue(childValue)}`
+        });
+      } else {
+        const firstLine = childLines[0];
+        const trimmed = firstLine.text.trimStart();
+        firstLine.text = `${indent}${indentUnit}${formatJsonKey(key)}: ${trimmed}`;
+        lines.push(...childLines);
+      }
+      if (index < entries.length - 1) {
+        lines[lines.length - 1].text += ",";
+      }
+    });
+    lines.push({ path, text: `${indent}}` });
+    return lines;
+  }
+
+  return [{ path, text: `${indent}${formatPrimitiveValue(value)}` }];
+}
+
+function formatJsonKey(key) {
+  return `<span class="token-key">"${escapeHtml(key)}"</span>`;
+}
+
+function formatPrimitiveValue(value) {
+  if (typeof value === "string") {
+    return `<span class="token-string">${escapeHtml(JSON.stringify(value))}</span>`;
+  }
+  if (typeof value === "number") {
+    return `<span class="token-number">${escapeHtml(String(value))}</span>`;
+  }
+  if (typeof value === "boolean") {
+    return `<span class="token-boolean">${value ? "true" : "false"}</span>`;
+  }
+  if (value === null || value === undefined) {
+    return `<span class="token-null">null</span>`;
+  }
+  if (Array.isArray(value)) {
+    return `<span class="token-hint">Array(${value.length})</span>`;
+  }
+  if (isPlainObject(value)) {
+    return `<span class="token-hint">Object(${Object.keys(value).length})</span>`;
+  }
+  return `<span class="token-string">${escapeHtml(JSON.stringify(value))}</span>`;
+}
+
+function getValueAtPath(source, path) {
+  if (path === "(root)") {
+    return source;
+  }
+
+  const tokenRegex = /([^[.\]]+)|\[(\d+)\]/g;
+  let current = source;
+  let match;
+
+  while ((match = tokenRegex.exec(path))) {
+    if (current === undefined || current === null) {
+      return undefined;
+    }
+    if (match[1] !== undefined) {
+      current = current[match[1]];
+    } else if (match[2] !== undefined) {
+      const index = Number(match[2]);
+      current = Array.isArray(current) ? current[index] : undefined;
+    }
+  }
+
+  return current;
+}
+
+function formatValuePreview(value) {
+  if (value === undefined) {
+    return "—";
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return `Array (${value.length})`;
+  }
+  if (isPlainObject(value)) {
+    return `Object (${Object.keys(value).length} keys)`;
+  }
+  if (typeof value === "string") {
+    const normalized = value.length > 120 ? `${value.slice(0, 117)}…` : value;
+    return `"${normalized}"`;
+  }
+  return String(value);
 }
 
 async function approveSubmission(submissionId) {

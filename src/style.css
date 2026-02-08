@@ -1105,6 +1105,74 @@ mark.search-highlight {
   gap: 0.44rem;
 }
 
+.moderation-callouts {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.moderation-callout {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.moderation-callout.diff-added {
+  border-color: rgba(47, 122, 72, 0.4);
+  background: rgba(47, 122, 72, 0.08);
+}
+
+.moderation-callout.diff-removed {
+  border-color: rgba(181, 64, 51, 0.4);
+  background: rgba(181, 64, 51, 0.08);
+}
+
+.moderation-callout.diff-updated {
+  border-color: rgba(194, 142, 55, 0.4);
+  background: rgba(194, 142, 55, 0.08);
+}
+
+.moderation-callout-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: var(--ink-strong);
+}
+
+.moderation-callout-icon {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+}
+
+.moderation-callout-type {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+}
+
+.moderation-callout-path {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+.moderation-callout-value {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink);
+  display: flex;
+  gap: 0.3rem;
+}
+
+.moderation-callout-value span {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
 .moderation-diff-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1129,6 +1197,53 @@ mark.search-highlight {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+}
+
+.token-key {
+  color: #30558a;
+}
+
+.token-string {
+  color: #7a3aa0;
+}
+
+.token-number {
+  color: #c07612;
+}
+
+.token-boolean {
+  color: #2f7a48;
+}
+
+.token-null {
+  color: #b54033;
+}
+
+.token-hint {
+  color: var(--ink-soft);
+}
+
+.diff-line {
+  display: block;
+  margin: 0 -0.3rem;
+  padding: 0 0.3rem;
+  border-radius: 6px;
+}
+
+.diff-added {
+  background: rgba(47, 122, 72, 0.18);
+  border-left: 2px solid rgba(47, 122, 72, 0.8);
+}
+
+.diff-removed {
+  background: rgba(181, 64, 51, 0.16);
+  border-left: 2px solid rgba(181, 64, 51, 0.8);
+}
+
+.diff-updated {
+  background: rgba(194, 142, 55, 0.18);
+  border-left: 2px solid rgba(194, 142, 55, 0.9);
 }
 
 .curator-status {
