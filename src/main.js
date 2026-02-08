@@ -14,7 +14,9 @@ const VISUAL_PRESET_LABELS = {
 };
 const MIN_IDLE_RESET_MS = 10000;
 const DEFAULT_IDLE_RESET_MS = 0;
+const SERVER_METRICS_REFRESH_INTERVAL_MS = 30000;
 let lastIdlePointerMoveTs = 0;
+let serverMetricsPollTimer = null;
 
 function detectShortcutPlatform() {
   if (typeof navigator === "undefined") {
@@ -763,6 +765,7 @@ function bindEvents() {
   window.addEventListener("beforeunload", () => {
     clearShowcaseTimer();
     clearIdleResetTimer();
+    stopServerMetricsPolling();
     analytics.shutdown();
   });
 
@@ -771,6 +774,7 @@ function bindEvents() {
       state.shortcutPlatform = detectShortcutPlatform();
       updateSearchShortcutHint();
       touchIdleReset();
+      void refreshServerMetrics({ silent: true });
       return;
     }
     clearIdleResetTimer();
@@ -860,9 +864,8 @@ async function loadArtifact(artifactId, options = {}) {
 }
 
 async function loadServerData() {
-  const [overridesResult, countersResult, updatesResult] = await Promise.allSettled([
+  const [overridesResult, updatesResult] = await Promise.allSettled([
     fetch("/api/cms/overrides"),
-    fetch("/api/analytics/counters"),
     fetch("/api/cms/recent-updates?limit=12")
   ]);
 
@@ -872,10 +875,7 @@ async function loadServerData() {
     applyOverrides(state.cmsOverrides);
   }
 
-  if (countersResult.status === "fulfilled" && countersResult.value.ok) {
-    const payload = await countersResult.value.json();
-    state.serverMetrics = payload.artifacts ?? {};
-  }
+  await refreshServerMetrics({ silent: true });
 
   if (updatesResult.status === "fulfilled" && updatesResult.value.ok) {
     const payload = await updatesResult.value.json();
@@ -886,6 +886,50 @@ async function loadServerData() {
   renderGallery();
   renderInsightsPanel();
   renderRecentUpdatesPanel();
+  startServerMetricsPolling();
+}
+
+async function refreshServerMetrics(options = {}) {
+  try {
+    const response = await fetch("/api/analytics/counters", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`server returned ${response.status}`);
+    }
+    const payload = await response.json();
+    state.serverMetrics = payload.artifacts ?? {};
+    if (state.currentArtifactId) {
+      renderInsightsPanel();
+    }
+    return true;
+  } catch (error) {
+    if (!options.silent) {
+      console.warn("Failed to refresh server metrics", error);
+    }
+    return false;
+  }
+}
+
+function startServerMetricsPolling() {
+  if (!Number.isFinite(SERVER_METRICS_REFRESH_INTERVAL_MS) || SERVER_METRICS_REFRESH_INTERVAL_MS <= 0) {
+    return;
+  }
+
+  stopServerMetricsPolling();
+
+  serverMetricsPollTimer = window.setInterval(() => {
+    if (document.visibilityState === "hidden") {
+      return;
+    }
+    void refreshServerMetrics({ silent: true });
+  }, SERVER_METRICS_REFRESH_INTERVAL_MS);
+}
+
+function stopServerMetricsPolling() {
+  if (!serverMetricsPollTimer) {
+    return;
+  }
+  window.clearInterval(serverMetricsPollTimer);
+  serverMetricsPollTimer = null;
 }
 
 function applyOverrides(overrides) {

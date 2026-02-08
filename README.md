@@ -19,7 +19,7 @@ Minimalist white-space 3D artifact experience with:
 - Tour autoplay + in-session progress restore per artifact
 - Keyboard shortcuts (`Cmd/Ctrl+K` focus search, `T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
 - Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
-- Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
+- Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots) with auto-refreshing server metrics
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
@@ -112,7 +112,7 @@ Local persistent file:
 
 ## Analytics
 
-Client events are captured in batches for: artifact views, load success/failure, search, filters, hotspots, tours, compare mode, sync toggles, share clicks, and story/reference interactions.
+Client events are captured in batches for: artifact views, load success/failure, search, filters, hotspots, tours, compare mode, sync toggles, share clicks, and story/reference interactions. When the analytics API is reachable, the viewer now re-pulls `/api/analytics/counters` every ~30 seconds (and whenever the tab regains focus) so the in-app insights panel reflects near-real-time kiosk activity without manual refreshes.
 
 Optional environment variables:
 
