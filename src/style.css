@@ -104,6 +104,52 @@ body {
   outline: none;
 }
 
+.search-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.76);
+  font-size: 0.72rem;
+  color: var(--ink);
+}
+
+.search-hint-label {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+}
+
+.search-hint-keys {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  color: var(--ink-strong);
+}
+
+.search-hint kbd {
+  border: 1px solid rgba(93, 78, 67, 0.4);
+  border-radius: 8px;
+  padding: 0.14rem 0.4rem;
+  font-size: 0.7rem;
+  background: #fff;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.search-hint-alt {
+  margin-left: 0.4rem;
+  font-size: 0.64rem;
+  color: var(--ink-soft);
+}
+
+.search-hint-alt:empty {
+  display: none;
+}
+
 .search-input:focus {
   border-color: rgba(184, 106, 59, 0.56);
   box-shadow: 0 0 0 3px rgba(184, 106, 59, 0.14);

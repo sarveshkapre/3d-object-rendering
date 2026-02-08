@@ -19,7 +19,22 @@
         <p class="brand-subtitle">Museum-grade 3D storytelling in a pure canvas space.</p>
         <label class="search-shell" for="artifactSearchInput">
           <span class="search-label">Search</span>
-          <input id="artifactSearchInput" class="search-input" type="search" placeholder="Find by name, material, or story..." autocomplete="off" />
+          <input
+            id="artifactSearchInput"
+            class="search-input"
+            type="search"
+            placeholder="Find by name, material, or story..."
+            autocomplete="off"
+            aria-keyshortcuts="Meta+K Control+K"
+          />
+          <span id="searchShortcutHint" class="search-hint" role="note">
+            <span class="search-hint-label">Shortcut</span>
+            <span class="search-hint-keys">
+              <kbd id="searchShortcutModifier">⌘</kbd>
+              <kbd>K</kbd>
+            </span>
+            <span id="searchShortcutAlt" class="search-hint-alt">Ctrl+K on Windows</span>
+          </span>
         </label>
         <div id="filterBar" class="filter-bar" role="tablist" aria-label="Artifact categories"></div>
         <div class="sort-shell">
@@ -138,6 +153,7 @@
               <p><kbd>H</kbd><span>Toggle hotspots</span></p>
               <p><kbd>C</kbd><span>Toggle compare mode</span></p>
               <p><kbd>S</kbd><span>Switch Inspect and Story view</span></p>
+              <p><kbd>⌘</kbd><kbd>K</kbd><span>Focus search (Ctrl+K on Windows/Linux)</span></p>
               <p><kbd>A</kbd><span>Toggle tour autoplay</span></p>
               <p><kbd>P</kbd><span>Cycle visual preset</span></p>
               <p><kbd>M</kbd><span>Toggle showcase mode</span></p>

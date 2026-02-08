@@ -13,6 +13,29 @@ const VISUAL_PRESET_LABELS = {
   sky: "Sky"
 };
 
+function detectShortcutPlatform() {
+  if (typeof navigator === "undefined") {
+    return "other";
+  }
+
+  const platformSource =
+    navigator.userAgentData?.platform ||
+    navigator.platform ||
+    (navigator.userAgent && navigator.userAgent.split(")")[0]) ||
+    "";
+  const normalized = platformSource.toLowerCase();
+  if (normalized.includes("mac")) {
+    return "mac";
+  }
+  if (normalized.includes("win")) {
+    return "windows";
+  }
+  if (normalized.includes("linux")) {
+    return "linux";
+  }
+  return "other";
+}
+
 const elements = {
   stage: document.getElementById("stage"),
   canvas: document.getElementById("viewport"),
@@ -26,6 +49,9 @@ const elements = {
   loadingBarCompare: document.getElementById("loadingBarCompare"),
   loadingTextCompare: document.getElementById("loadingTextCompare"),
   searchInput: document.getElementById("artifactSearchInput"),
+  searchShortcutHint: document.getElementById("searchShortcutHint"),
+  searchShortcutModifier: document.getElementById("searchShortcutModifier"),
+  searchShortcutAlt: document.getElementById("searchShortcutAlt"),
   sortSelect: document.getElementById("artifactSortSelect"),
   galleryStats: document.getElementById("galleryStats"),
   filterBar: document.getElementById("filterBar"),
@@ -142,6 +168,7 @@ const state = {
   showcaseActive: false,
   showcaseRequested: parsedUrlState.showcaseActive,
   showcaseTimer: null,
+  shortcutPlatform: detectShortcutPlatform(),
   showcasePreviousAutoplay: parsedUrlState.tourAutoPlay,
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
@@ -345,6 +372,7 @@ initialize();
 function initialize() {
   elements.searchInput.value = state.searchQuery;
   elements.sortSelect.value = state.sortMode;
+  updateSearchShortcutHint();
   state.curatorArtifactId = parsedUrlState.artifactId && artifactMap.has(parsedUrlState.artifactId) ? parsedUrlState.artifactId : artifacts[0]?.id ?? null;
   state.moderationArtifactId = state.curatorArtifactId;
   renderCuratorArtifactOptions();
@@ -721,6 +749,13 @@ function bindEvents() {
   window.addEventListener("beforeunload", () => {
     clearShowcaseTimer();
     analytics.shutdown();
+  });
+
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      state.shortcutPlatform = detectShortcutPlatform();
+      updateSearchShortcutHint();
+    }
   });
 }
 
@@ -2313,7 +2348,88 @@ function handleViewerCameraChange(source) {
   state.cameraSyncLock = false;
 }
 
+function getSearchShortcutDescriptor(platform) {
+  if (platform === "mac") {
+    return {
+      modifierLabel: "⌘",
+      modifierName: "Command",
+      altText: "Ctrl+K on Windows/Linux",
+      ariaShortcuts: "Meta+K Control+K"
+    };
+  }
+
+  return {
+    modifierLabel: "Ctrl",
+    modifierName: "Control",
+    altText: "Cmd+K on macOS",
+    ariaShortcuts: "Control+K Meta+K"
+  };
+}
+
+function updateSearchShortcutHint() {
+  const modifierEl = elements.searchShortcutModifier;
+  const altEl = elements.searchShortcutAlt;
+  const input = elements.searchInput;
+  if (!modifierEl || !input) {
+    return;
+  }
+
+  const descriptor = getSearchShortcutDescriptor(state.shortcutPlatform);
+  modifierEl.textContent = descriptor.modifierLabel;
+  modifierEl.setAttribute("aria-label", descriptor.modifierName);
+  if (altEl) {
+    altEl.textContent = descriptor.altText;
+    altEl.hidden = !descriptor.altText;
+  }
+  input.setAttribute("aria-keyshortcuts", descriptor.ariaShortcuts);
+}
+
+function focusSearchInput(options = {}) {
+  const input = elements.searchInput;
+  if (!input) {
+    return false;
+  }
+
+  const wasFocused = document.activeElement === input;
+
+  if (typeof input.scrollIntoView === "function" && options.scroll !== false) {
+    input.scrollIntoView({ behavior: options.behavior ?? "smooth", block: "center" });
+  }
+
+  input.focus();
+  if (typeof input.select === "function") {
+    input.select();
+  }
+
+  return !wasFocused;
+}
+
 function handleKeydown(event) {
+  const normalizedKey = event.key.toLowerCase();
+  const isSearchShortcut = normalizedKey === "k" && (event.metaKey || event.ctrlKey);
+  if (isSearchShortcut) {
+    event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_search");
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { source: "keyboard", skipTrack: true });
+    }
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { source: "keyboard", skipTrack: true });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { source: "keyboard", skipTrack: true });
+    }
+
+    const focused = focusSearchInput({ behavior: "instant" });
+    trackEvent("search_shortcut_used", {
+      modifier: event.metaKey ? "meta" : "control",
+      platform: state.shortcutPlatform,
+      alreadyFocused: !focused,
+      results: getVisibleArtifacts().length
+    });
+    return;
+  }
+
   if (event.key === "Escape") {
     if (state.moderationOpen) {
       event.preventDefault();
@@ -2377,7 +2493,7 @@ function handleKeydown(event) {
     return;
   }
 
-  const key = event.key.toLowerCase();
+  const key = normalizedKey;
 
   if (key === "h") {
     event.preventDefault();
