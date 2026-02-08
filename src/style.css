@@ -30,6 +30,13 @@ body {
     linear-gradient(180deg, #fdfcf9 0%, #f6f3ee 100%);
 }
 
+mark.search-highlight {
+  background: rgba(184, 106, 59, 0.28);
+  color: inherit;
+  padding: 0 0.1em;
+  border-radius: 4px;
+}
+
 .app {
   width: 100vw;
   height: 100vh;

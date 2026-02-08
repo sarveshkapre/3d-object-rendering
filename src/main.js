@@ -446,6 +446,9 @@ function bindEvents() {
   elements.searchInput.addEventListener("input", () => {
     state.searchQuery = elements.searchInput.value.trim();
     renderGallery();
+    renderHotspotList();
+    renderStoryPanel();
+    renderHotspotCard();
     scheduleUrlUpdate();
 
     window.clearTimeout(state.searchTrackTimer);
@@ -1889,6 +1892,7 @@ function renderGallery() {
   const visibleArtifacts = getRankedArtifacts();
   const totalArtifacts = artifacts.length;
   elements.galleryStats.textContent = `${visibleArtifacts.length} of ${totalArtifacts} artifacts`;
+  const searchTokens = getActiveSearchTokens();
 
   if (!visibleArtifacts.length) {
     elements.galleryList.innerHTML = '<p class="empty-state">No artifacts match this search.</p>';
@@ -1902,12 +1906,16 @@ function renderGallery() {
     button.classList.toggle("is-active", artifact.id === state.currentArtifactId);
 
     const keywordText = (artifact.keywords ?? []).slice(0, 3).join(" · ");
+    const titleHtml = highlightText(artifact.title, searchTokens);
+    const categoryHtml = highlightText(artifact.category, searchTokens);
+    const hookHtml = highlightText(artifact.hook, searchTokens);
+    const tagsHtml = highlightText(keywordText, searchTokens);
 
     button.innerHTML = `
-      <span class="artifact-chip-title">${escapeHtml(artifact.title)}</span>
-      <span class="artifact-chip-meta">${escapeHtml(artifact.category)}</span>
-      <span class="artifact-chip-hook">${escapeHtml(artifact.hook)}</span>
-      <span class="artifact-chip-tags">${escapeHtml(keywordText)}</span>
+      <span class="artifact-chip-title">${titleHtml}</span>
+      <span class="artifact-chip-meta">${categoryHtml}</span>
+      <span class="artifact-chip-hook">${hookHtml}</span>
+      <span class="artifact-chip-tags">${tagsHtml}</span>
     `;
 
     button.addEventListener("click", () => {
@@ -1962,6 +1970,8 @@ function renderHotspotList() {
     return;
   }
 
+  const searchTokens = getActiveSearchTokens();
+
   if (!state.hotspotData.length) {
     elements.hotspotListPanel.innerHTML = `
       <p class="panel-label">${escapeHtml(artifact.hotspotTitle)}</p>
@@ -1975,6 +1985,8 @@ function renderHotspotList() {
   const itemsMarkup = state.hotspotData
     .map((hotspot, index) => {
       const selectedClass = state.selectedHotspot?.id === hotspot.id ? "is-active" : "";
+      const labelHtml = highlightText(hotspot.label, searchTokens);
+      const titleHtml = highlightText(hotspot.title, searchTokens);
       return `
         <button
           class="hotspot-list-item ${selectedClass}"
@@ -1985,8 +1997,8 @@ function renderHotspotList() {
         >
           <span class="hotspot-list-index">${String(index + 1).padStart(2, "0")}</span>
           <span class="hotspot-list-copy">
-            <span class="hotspot-list-label">${escapeHtml(hotspot.label)}</span>
-            <span class="hotspot-list-title">${escapeHtml(hotspot.title)}</span>
+            <span class="hotspot-list-label">${labelHtml}</span>
+            <span class="hotspot-list-title">${titleHtml}</span>
           </span>
         </button>
       `;
@@ -2066,10 +2078,11 @@ function syncHotspotListKeyboardState() {
 
 function renderStoryPanel() {
   const artifact = artifactMap.get(state.currentArtifactId);
+  const searchTokens = getActiveSearchTokens();
   if (!artifact?.story) {
     elements.storyKicker.textContent = "Story";
-    elements.storyTitle.textContent = "Story unavailable";
-    elements.storySummary.textContent = "This artifact does not include narrative content yet.";
+    elements.storyTitle.innerHTML = "Story unavailable";
+    elements.storySummary.innerHTML = "This artifact does not include narrative content yet.";
     elements.storyBody.innerHTML = "";
     elements.storyReferences.innerHTML = "";
     return;
@@ -2077,11 +2090,11 @@ function renderStoryPanel() {
 
   const { story } = artifact;
   elements.storyKicker.textContent = `${artifact.category.toUpperCase()} STORY`;
-  elements.storyTitle.textContent = story.title;
-  elements.storySummary.textContent = story.summary;
+  elements.storyTitle.innerHTML = highlightText(story.title, searchTokens);
+  elements.storySummary.innerHTML = highlightText(story.summary, searchTokens);
 
   elements.storyBody.innerHTML = (story.body ?? [])
-    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .map((paragraph) => `<p>${highlightText(paragraph, searchTokens)}</p>`)
     .join("");
 
   if (!story.references?.length) {
@@ -2095,7 +2108,7 @@ function renderStoryPanel() {
       ${story.references
         .map(
           (reference) =>
-            `<a class="story-reference-link" href="${escapeHtml(reference.url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(reference.label)}</a>`
+            `<a class="story-reference-link" href="${escapeHtml(reference.url)}" target="_blank" rel="noreferrer noopener">${highlightText(reference.label, searchTokens)}</a>`
         )
         .join("")}
     </div>
@@ -2198,6 +2211,7 @@ function renderRecentUpdatesPanel() {
 function renderHotspotCard() {
   const artifact = artifactMap.get(state.currentArtifactId);
   const hotspot = state.selectedHotspot;
+  const searchTokens = getActiveSearchTokens();
 
   if (state.activeDetailView !== "hotspots" || !artifact || !hotspot) {
     elements.hotspotCard.hidden = true;
@@ -2208,10 +2222,9 @@ function renderHotspotCard() {
   elements.hotspotKicker.textContent = state.tourActive
     ? `Guided Tour · Step ${state.tourIndex + 1}/${state.tourTotal}`
     : artifact.hotspotTitle;
-  elements.hotspotTitle.textContent = hotspot.title;
-  elements.hotspotBody.textContent = state.tourActive && state.tourCaption
-    ? `${state.tourCaption} ${hotspot.body}`
-    : hotspot.body;
+  elements.hotspotTitle.innerHTML = highlightText(hotspot.title, searchTokens);
+  const hotspotBodyText = state.tourActive && state.tourCaption ? `${state.tourCaption} ${hotspot.body}` : hotspot.body;
+  elements.hotspotBody.innerHTML = highlightText(hotspotBodyText, searchTokens);
 
   if (hotspot.reference) {
     elements.hotspotLink.href = hotspot.reference;
@@ -3452,6 +3465,137 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function getActiveSearchTokens() {
+  const normalized = normalizeSearchText(state.searchQuery);
+  if (!normalized) {
+    return [];
+  }
+  const seen = new Set();
+  const tokens = [];
+  normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .forEach((token) => {
+      if (seen.has(token)) {
+        return;
+      }
+      seen.add(token);
+      tokens.push(token);
+    });
+  return tokens.slice(0, 6);
+}
+
+function highlightText(value, tokens = []) {
+  const text = String(value ?? "");
+  if (!text) {
+    return "";
+  }
+  if (!tokens.length) {
+    return escapeHtml(text);
+  }
+
+  const ranges = buildHighlightRanges(text, tokens);
+  if (!ranges.length) {
+    return escapeHtml(text);
+  }
+
+  let cursor = 0;
+  let html = "";
+  ranges.forEach(([start, end]) => {
+    if (start > cursor) {
+      html += escapeHtml(text.slice(cursor, start));
+    }
+    html += `<mark class="search-highlight">${escapeHtml(text.slice(start, end))}</mark>`;
+    cursor = end;
+  });
+
+  if (cursor < text.length) {
+    html += escapeHtml(text.slice(cursor));
+  }
+
+  return html;
+}
+
+function buildHighlightRanges(text, tokens) {
+  const lookup = createNormalizedLookup(text);
+  if (!lookup.normalized.length) {
+    return [];
+  }
+
+  const ranges = [];
+  tokens.forEach((token) => {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
+      return;
+    }
+    let searchIndex = 0;
+    while (searchIndex < lookup.normalized.length) {
+      const matchIndex = lookup.normalized.indexOf(normalizedToken, searchIndex);
+      if (matchIndex === -1) {
+        break;
+      }
+      const start = lookup.indexMap[matchIndex] ?? 0;
+      const lastMapIndex = matchIndex + normalizedToken.length - 1;
+      const lastStart = lookup.indexMap[lastMapIndex] ?? start;
+      const end = lastStart + getCodePointLengthAt(text, lastStart);
+      ranges.push([start, end]);
+      searchIndex = matchIndex + normalizedToken.length;
+    }
+  });
+
+  return mergeHighlightRanges(ranges);
+}
+
+function createNormalizedLookup(text) {
+  const normalizedChars = [];
+  const indexMap = [];
+  let offset = 0;
+  for (const char of text) {
+    const normalized = char.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    for (const normalizedChar of normalized.toLowerCase()) {
+      normalizedChars.push(normalizedChar);
+      indexMap.push(offset);
+    }
+    offset += char.length;
+  }
+  return {
+    normalized: normalizedChars.join(""),
+    indexMap
+  };
+}
+
+function mergeHighlightRanges(ranges) {
+  if (!ranges.length) {
+    return [];
+  }
+  const sorted = ranges
+    .map(([start, end]) => [Math.max(0, start), Math.max(start, end)])
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  const merged = [];
+  sorted.forEach(([start, end]) => {
+    const last = merged[merged.length - 1];
+    if (!last) {
+      merged.push([start, end]);
+      return;
+    }
+    if (start <= last[1]) {
+      last[1] = Math.max(last[1], end);
+      return;
+    }
+    merged.push([start, end]);
+  });
+  return merged;
+}
+
+function getCodePointLengthAt(text, index) {
+  const code = text.codePointAt(index);
+  if (!code) {
+    return 1;
+  }
+  return code > 0xffff ? 2 : 1;
 }
 
 function normalizeSearchText(value) {
