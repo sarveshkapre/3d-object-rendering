@@ -7,10 +7,12 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- `compare-insights`: Extend the insights panel with compare views + primary/secondary artifact usage to highlight gallery pairing behavior.
 - `moderation-diff-highlights`: Layer syntax-highlighted diffs and inline field callouts into the moderation panel so reviewers can confirm changes faster than scanning raw JSON blobs.
+- `compare-sync-memory`: Remember the last compare partner per artifact plus the sync toggle preference so curators don't have to reconfigure compare mode every time they re-open it.
+- `insights-trendlines`: Attach small sparklines or delta indicators to the insights chips so kiosk staff can see whether engagement metrics are trending up or down between server polls.
 
 ## Implemented
+- 2026-02-08 · `compare-insights`: Added compare session tracking, a top partner leaderboard, and analytics plumbing so the insights panel reflects how often visitors pair each artifact. Evidence: `src/main.js`, `src/style.css`, `server/index.js`, `README.md`, `npm run build`.
 - 2026-02-08 · `search-highlight`: Added semantic `<mark>`-based highlighting hooked into the normalized search index so gallery chips, hotspot lists, and story paragraphs immediately show why a query matched. Evidence: `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
 - 2026-02-08 · `search-rich-metadata`: Expanded gallery search to use a normalized, diacritic-insensitive index that includes story body, references, hotspot metadata, and keywords for each artifact. Evidence: `src/main.js`, `npm run build`.
 - 2026-02-08 · `share-native`: Added Web Share API handling (with clipboard backup) that flushes the deep-link URL before launching native share sheets, tracks share outcomes, and updates docs. Evidence: `src/main.js`, `README.md`, `server/index.js`, `npm run build`.
@@ -27,6 +29,7 @@
 - Idle reset behavior needs to be configurable because some kiosks run fully unattended while others have docents; exposing the timer via `?idle=` keeps deployments flexible without adding admin UI.
 - Hotspot keyboard access previously failed because focus stayed behind hidden elements; roving tab indexes keep the list operable for ADA/Section 508 reviews and stop kiosks from forcing users back to the mouse.
 - Analytics counters were previously captured only at load, so kiosks drifted from actual server totals after long runs; background refresh tied to the Page Visibility API keeps numbers trustworthy without hammering hidden tabs.
+- Compare pair telemetry needed to live next to the rest of the kiosk insights; surfacing pair counts and partner rankings keeps docents informed when visitors repeatedly contrast the same artifacts.
 
 ## Notes
 - This file is maintained by the autonomous clone loop.

@@ -67,7 +67,11 @@ function createArtifactCounter(seed = {}) {
     tourLastStepReached: Number(seed.tourLastStepReached || 0),
     shares: Number(seed.shares || 0),
     compareViews: Number(seed.compareViews || 0),
-    hotspotCounts: typeof seed.hotspotCounts === "object" && seed.hotspotCounts ? seed.hotspotCounts : {}
+    compareSessions: Number(seed.compareSessions || 0),
+    hotspotCounts:
+      typeof seed.hotspotCounts === "object" && seed.hotspotCounts ? { ...seed.hotspotCounts } : {},
+    comparePartnerCounts:
+      typeof seed.comparePartnerCounts === "object" && seed.comparePartnerCounts ? { ...seed.comparePartnerCounts } : {}
   };
 }
 
@@ -222,6 +226,13 @@ function applyAnalyticsEvent(store, event) {
     existing.shares += 1;
   } else if (eventName === "compare_artifact_viewed") {
     existing.compareViews += 1;
+  } else if (eventName === "compare_pair_recorded") {
+    existing.compareSessions += 1;
+    if (payload.compareArtifactId && typeof payload.compareArtifactId === "string") {
+      const partnerId = payload.compareArtifactId;
+      const current = existing.comparePartnerCounts[partnerId] || 0;
+      existing.comparePartnerCounts[partnerId] = current + 1;
+    }
   }
 
   store.analytics.artifacts[artifactId] = existing;

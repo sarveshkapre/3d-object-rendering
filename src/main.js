@@ -435,7 +435,8 @@ async function bootstrap(artifactId) {
 
   ensureValidCompareArtifact();
   await loadCompareArtifact(state.compareArtifactId, {
-    syncFromPrimary: true
+    syncFromPrimary: true,
+    source: "bootstrap"
   });
 }
 
@@ -518,7 +519,7 @@ function bindEvents() {
     state.compareSync = true;
     ensureValidCompareArtifact();
     setCompareModeUI(true);
-    await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true });
+    await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true, source: "compare_toggle" });
     scheduleUrlUpdate();
     trackEvent("compare_toggled", {
       enabled: true,
@@ -846,7 +847,7 @@ async function loadArtifact(artifactId, options = {}) {
 
     if (state.compareEnabled && !options.skipCompareReload) {
       ensureValidCompareArtifact();
-      await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true });
+      await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true, source: "primary_changed" });
     }
 
     renderHotspotCard();
@@ -997,6 +998,7 @@ async function loadCompareArtifact(artifactId, options = {}) {
     return;
   }
   const loadStartedAt = performance.now();
+  const compareSource = options.source ?? "compare_mode";
 
   state.compareArtifactId = artifactId;
   state.compareReady = false;
@@ -1014,6 +1016,9 @@ async function loadCompareArtifact(artifactId, options = {}) {
 
     if (options.syncFromPrimary && state.compareSync) {
       compareViewer.applyCameraPose(primaryViewer.getCameraPose(), { emitCameraChange: false });
+    }
+    if (state.currentArtifactId) {
+      recordComparePair(state.currentArtifactId, artifactId, { source: compareSource });
     }
 
     scheduleUrlUpdate();
@@ -1955,7 +1960,7 @@ function renderCompareList() {
         primaryArtifactId: state.currentArtifactId,
         compareArtifactId: artifact.id
       });
-      await loadCompareArtifact(artifact.id, { syncFromPrimary: true });
+      await loadCompareArtifact(artifact.id, { syncFromPrimary: true, source: "compare_select" });
     });
 
     elements.compareArtifactList.appendChild(button);
@@ -2124,6 +2129,7 @@ function renderInsightsPanel() {
   const artifact = artifactMap.get(state.currentArtifactId);
   const artifactMetrics = getDisplayMetricsForArtifact(state.currentArtifactId);
   const hotspotEntries = Object.entries(artifactMetrics.hotspotCounts ?? {});
+  const comparePartnerEntries = Object.entries(artifactMetrics.comparePartnerCounts ?? {});
   const topHotspots = hotspotEntries
     .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
     .slice(0, 3)
@@ -2134,13 +2140,25 @@ function renderInsightsPanel() {
         count
       };
     });
+  const topComparePartners = comparePartnerEntries
+    .sort(([, leftCount], [, rightCount]) => rightCount - leftCount)
+    .slice(0, 3)
+    .map(([partnerId, count]) => {
+      const partner = artifactMap.get(partnerId);
+      return {
+        label: partner?.title ?? partnerId,
+        count
+      };
+    });
 
   const metricItems = [
     { label: "Views", value: artifactMetrics.views },
     { label: "Hotspot Opens", value: artifactMetrics.hotspotOpens },
     { label: "Tour Starts", value: artifactMetrics.tourStarts },
     { label: "Tour Last Step", value: artifactMetrics.tourLastStepReached },
-    { label: "Shares", value: artifactMetrics.shares }
+    { label: "Shares", value: artifactMetrics.shares },
+    { label: "Compare Sessions", value: artifactMetrics.compareSessions },
+    { label: "Compare Views", value: artifactMetrics.compareViews }
   ];
 
   const topHotspotMarkup = topHotspots.length
@@ -2156,6 +2174,19 @@ function renderInsightsPanel() {
         .join("")
     : '<li class="insights-top-item is-empty"><span>No hotspot interactions yet</span><strong>0</strong></li>';
 
+  const topCompareMarkup = topComparePartners.length
+    ? topComparePartners
+        .map(
+          (entry) => `
+            <li class="insights-top-item">
+              <span>${escapeHtml(entry.label)}</span>
+              <strong>${entry.count}</strong>
+            </li>
+          `
+        )
+        .join("")
+    : '<li class="insights-top-item is-empty"><span>No compare pairings yet</span><strong>0</strong></li>';
+
   elements.insightsContent.innerHTML = `
     <div class="insights-grid">
       ${metricItems
@@ -2169,8 +2200,16 @@ function renderInsightsPanel() {
         )
         .join("")}
     </div>
-    <p class="insights-top-label">Top Hotspots</p>
-    <ol class="insights-top-list">${topHotspotMarkup}</ol>
+    <div class="insights-list-grid">
+      <section class="insights-top-card">
+        <p class="insights-top-label">Top Hotspots</p>
+        <ol class="insights-top-list">${topHotspotMarkup}</ol>
+      </section>
+      <section class="insights-top-card">
+        <p class="insights-top-label">Top Compare Partners</p>
+        <ol class="insights-top-list">${topCompareMarkup}</ol>
+      </section>
+    </div>
   `;
 }
 
@@ -3298,33 +3337,74 @@ function persistSessionMetrics(metrics) {
   }
 }
 
-function getArtifactMetrics(artifactId) {
-  const base = {
+function createEmptyMetricsRecord() {
+  return {
     views: 0,
     hotspotOpens: 0,
     tourStarts: 0,
     tourLastStepReached: 0,
     shares: 0,
     compareViews: 0,
-    hotspotCounts: {}
+    compareSessions: 0,
+    hotspotCounts: {},
+    comparePartnerCounts: {}
   };
+}
 
-  if (!artifactId) {
-    return base;
+function ensureMetricsShape(record) {
+  if (!record || typeof record !== "object") {
+    return createEmptyMetricsRecord();
   }
 
-  return state.sessionMetrics.artifacts[artifactId] ?? base;
+  record.views = Number(record.views) || 0;
+  record.hotspotOpens = Number(record.hotspotOpens) || 0;
+  record.tourStarts = Number(record.tourStarts) || 0;
+  record.tourLastStepReached = Number(record.tourLastStepReached) || 0;
+  record.shares = Number(record.shares) || 0;
+  record.compareViews = Number(record.compareViews) || 0;
+  record.compareSessions = Number(record.compareSessions) || 0;
+
+  if (!record.hotspotCounts || typeof record.hotspotCounts !== "object") {
+    record.hotspotCounts = {};
+  }
+
+  if (!record.comparePartnerCounts || typeof record.comparePartnerCounts !== "object") {
+    record.comparePartnerCounts = {};
+  }
+
+  return record;
+}
+
+function getArtifactMetrics(artifactId) {
+  if (!artifactId) {
+    return createEmptyMetricsRecord();
+  }
+
+  if (!state.sessionMetrics.artifacts[artifactId]) {
+    state.sessionMetrics.artifacts[artifactId] = createEmptyMetricsRecord();
+  }
+
+  return ensureMetricsShape(state.sessionMetrics.artifacts[artifactId]);
 }
 
 function getDisplayMetricsForArtifact(artifactId) {
   const serverMetrics = state.serverMetrics[artifactId];
   if (serverMetrics && typeof serverMetrics === "object") {
-    return serverMetrics;
+    return ensureMetricsShape({ ...createEmptyMetricsRecord(), ...serverMetrics });
   }
-  return getArtifactMetrics(artifactId);
+  if (state.sessionMetrics.artifacts[artifactId]) {
+    return ensureMetricsShape(state.sessionMetrics.artifacts[artifactId]);
+  }
+  return createEmptyMetricsRecord();
 }
 
 function applyMetricEventToRecord(record, eventName, details = {}) {
+  if (!record) {
+    return false;
+  }
+
+  ensureMetricsShape(record);
+
   if (eventName === "artifact_viewed") {
     record.views += 1;
     return true;
@@ -3355,6 +3435,15 @@ function applyMetricEventToRecord(record, eventName, details = {}) {
 
   if (eventName === "compare_artifact_viewed") {
     record.compareViews += 1;
+    return true;
+  }
+
+  if (eventName === "compare_pair_recorded") {
+    record.compareSessions += 1;
+    if (details.compareArtifactId) {
+      const partnerId = details.compareArtifactId;
+      record.comparePartnerCounts[partnerId] = (record.comparePartnerCounts[partnerId] ?? 0) + 1;
+    }
     return true;
   }
 
@@ -3445,9 +3534,11 @@ function getArtifactPopularityScore(artifactId) {
 
 function trackEvent(eventName, payload = {}) {
   const artifactId = payload.artifactId ?? state.currentArtifactId;
+  const compareArtifactId = payload.compareArtifactId ?? (state.compareEnabled ? state.compareArtifactId : null);
   updateSessionMetrics(eventName, {
     artifactId,
-    hotspotId: payload.hotspotId ?? null
+    hotspotId: payload.hotspotId ?? null,
+    compareArtifactId
   });
 
   analytics.track(eventName, {
@@ -3455,6 +3546,23 @@ function trackEvent(eventName, payload = {}) {
     compareArtifactId: state.compareEnabled ? state.compareArtifactId : null,
     detailView: state.activeDetailView,
     ...payload
+  });
+}
+
+function recordComparePair(primaryArtifactId, compareArtifactId, options = {}) {
+  if (!primaryArtifactId || !compareArtifactId || primaryArtifactId === compareArtifactId) {
+    return;
+  }
+
+  if (!artifactMap.has(primaryArtifactId) || !artifactMap.has(compareArtifactId)) {
+    return;
+  }
+
+  const source = options.source ?? "compare_mode";
+  trackEvent("compare_pair_recorded", {
+    artifactId: primaryArtifactId,
+    compareArtifactId,
+    compareSource: source
   });
 }
 

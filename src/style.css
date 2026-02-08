@@ -229,7 +229,7 @@ mark.search-highlight {
 
 .insights-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.4rem;
 }
 
@@ -263,6 +263,25 @@ mark.search-highlight {
   letter-spacing: 0.08em;
 }
 
+
+.insights-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.46rem;
+  margin-top: 0.4rem;
+}
+
+.insights-top-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.5rem;
+}
+
+.insights-top-card .insights-top-label {
+  margin-top: 0;
+}
+
 .insights-top-list {
   margin: 0.38rem 0 0;
   padding: 0;
@@ -289,6 +308,22 @@ mark.search-highlight {
 
 .insights-top-item.is-empty {
   color: var(--ink-soft);
+}
+
+@media (max-width: 1200px) {
+  .insights-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .insights-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .insights-list-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .updates-list {

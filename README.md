@@ -20,7 +20,7 @@ Minimalist white-space 3D artifact experience with:
 - Search result highlights across gallery cards, hotspot lists, and story paragraphs so docents immediately see why a match appeared
 - Keyboard shortcuts (`Cmd/Ctrl+K` focus search, `T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
 - Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
-- Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots) with auto-refreshing server metrics
+- Live session insights panel (views, hotspot engagement, compare sessions, compare partner leaderboard, tour usage, shares) with auto-refreshing server metrics
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore
@@ -114,6 +114,8 @@ Local persistent file:
 ## Analytics
 
 Client events are captured in batches for: artifact views, load success/failure, search, filters, hotspots, tours, compare mode, sync toggles, share clicks, and story/reference interactions. When the analytics API is reachable, the viewer now re-pulls `/api/analytics/counters` every ~30 seconds (and whenever the tab regains focus) so the in-app insights panel reflects near-real-time kiosk activity without manual refreshes.
+
+Compare pairings emit `compare_pair_recorded` events that track how often an artifact is used as the primary anchor in compare mode and which secondary artifacts get paired the most. These fuel the compare session counter and the new top compare partners list surfaced inside the insights panel.
 
 Optional environment variables:
 
