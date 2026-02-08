@@ -16,6 +16,15 @@ const VISUAL_PRESET_LABELS = {
 const MIN_IDLE_RESET_MS = 10000;
 const DEFAULT_IDLE_RESET_MS = 0;
 const SERVER_METRICS_REFRESH_INTERVAL_MS = 30000;
+const INSIGHTS_METRIC_DEFINITIONS = [
+  { key: "views", label: "Views" },
+  { key: "hotspotOpens", label: "Hotspot Opens" },
+  { key: "tourStarts", label: "Tour Starts" },
+  { key: "tourLastStepReached", label: "Tour Last Step" },
+  { key: "shares", label: "Shares" },
+  { key: "compareSessions", label: "Compare Sessions" },
+  { key: "compareViews", label: "Compare Views" }
+];
 let lastIdlePointerMoveTs = 0;
 let serverMetricsPollTimer = null;
 
@@ -185,6 +194,8 @@ const state = {
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
   serverMetrics: {},
+  serverMetricDeltas: {},
+  lastServerMetricsSnapshot: null,
   recentUpdates: [],
   cmsOverrides: {},
   curatorOpen: false,
@@ -911,7 +922,11 @@ async function refreshServerMetrics(options = {}) {
       throw new Error(`server returned ${response.status}`);
     }
     const payload = await response.json();
-    state.serverMetrics = payload.artifacts ?? {};
+    const nextMetrics = payload.artifacts ?? {};
+    const previousSnapshot = state.lastServerMetricsSnapshot;
+    state.serverMetricDeltas = previousSnapshot ? computeServerMetricDeltas(previousSnapshot, nextMetrics) : {};
+    state.lastServerMetricsSnapshot = cloneServerMetricsSnapshot(nextMetrics);
+    state.serverMetrics = nextMetrics;
     if (state.currentArtifactId) {
       renderInsightsPanel();
     }
@@ -2483,15 +2498,11 @@ function renderInsightsPanel() {
       };
     });
 
-  const metricItems = [
-    { label: "Views", value: artifactMetrics.views },
-    { label: "Hotspot Opens", value: artifactMetrics.hotspotOpens },
-    { label: "Tour Starts", value: artifactMetrics.tourStarts },
-    { label: "Tour Last Step", value: artifactMetrics.tourLastStepReached },
-    { label: "Shares", value: artifactMetrics.shares },
-    { label: "Compare Sessions", value: artifactMetrics.compareSessions },
-    { label: "Compare Views", value: artifactMetrics.compareViews }
-  ];
+  const metricItems = INSIGHTS_METRIC_DEFINITIONS.map((definition) => ({
+    ...definition,
+    value: artifactMetrics[definition.key] ?? 0,
+    delta: getMetricDeltaForArtifact(state.currentArtifactId, definition.key)
+  }));
 
   const topHotspotMarkup = topHotspots.length
     ? topHotspots
@@ -2523,12 +2534,26 @@ function renderInsightsPanel() {
     <div class="insights-grid">
       ${metricItems
         .map(
-          (item) => `
+          (item) => {
+            const hasDelta = Number.isFinite(item.delta);
+            const delta = hasDelta ? Number(item.delta) : null;
+            const deltaTone = delta > 0 ? "is-up" : delta < 0 ? "is-down" : "is-flat";
+            const deltaPrefix = delta > 0 ? "+" : "";
+            const deltaLabel = hasDelta ? `${deltaPrefix}${delta}` : "";
+            const deltaAriaLabel = hasDelta ? `Delta ${deltaLabel} since last server poll` : "";
+            return `
             <div class="insight-chip">
               <span class="insight-label">${escapeHtml(item.label)}</span>
               <strong class="insight-value">${item.value}</strong>
+              <span
+                class="insight-delta ${hasDelta ? `${deltaTone} is-visible` : "is-hidden"}"
+                ${deltaAriaLabel ? `aria-label="${escapeHtml(deltaAriaLabel)}"` : 'aria-hidden="true"'}
+              >
+                ${hasDelta ? escapeHtml(deltaLabel) : ""}
+              </span>
             </div>
-          `
+          `;
+          }
         )
         .join("")}
     </div>
@@ -3802,6 +3827,56 @@ function ensureMetricsShape(record) {
   }
 
   return record;
+}
+
+function cloneServerMetricsSnapshot(metricsByArtifact = {}) {
+  const snapshot = {};
+  for (const [artifactId, metrics] of Object.entries(metricsByArtifact ?? {})) {
+    snapshot[artifactId] = ensureMetricsShape({
+      ...createEmptyMetricsRecord(),
+      ...(metrics && typeof metrics === "object" ? metrics : {})
+    });
+  }
+  return snapshot;
+}
+
+function computeServerMetricDeltas(previousSnapshot = {}, nextMetrics = {}) {
+  const deltas = {};
+  const nextSnapshot = cloneServerMetricsSnapshot(nextMetrics);
+  const artifactIds = new Set([...Object.keys(previousSnapshot), ...Object.keys(nextSnapshot)]);
+
+  artifactIds.forEach((artifactId) => {
+    const previous = ensureMetricsShape({
+      ...createEmptyMetricsRecord(),
+      ...(previousSnapshot[artifactId] ?? {})
+    });
+    const next = ensureMetricsShape({
+      ...createEmptyMetricsRecord(),
+      ...(nextSnapshot[artifactId] ?? {})
+    });
+
+    const metricDeltas = {};
+    INSIGHTS_METRIC_DEFINITIONS.forEach((definition) => {
+      metricDeltas[definition.key] = (next[definition.key] ?? 0) - (previous[definition.key] ?? 0);
+    });
+    deltas[artifactId] = metricDeltas;
+  });
+
+  return deltas;
+}
+
+function getMetricDeltaForArtifact(artifactId, metricKey) {
+  if (!artifactId || !metricKey) {
+    return null;
+  }
+
+  const artifactDeltas = state.serverMetricDeltas[artifactId];
+  if (!artifactDeltas || !Object.prototype.hasOwnProperty.call(artifactDeltas, metricKey)) {
+    return null;
+  }
+
+  const value = Number(artifactDeltas[metricKey]);
+  return Number.isFinite(value) ? value : null;
 }
 
 function getArtifactMetrics(artifactId) {

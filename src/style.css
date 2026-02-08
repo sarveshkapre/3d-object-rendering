@@ -255,6 +255,38 @@ mark.search-highlight {
   line-height: 1;
 }
 
+.insight-delta {
+  justify-self: start;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 0.08rem 0.34rem;
+  font-size: 0.61rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.insight-delta.is-visible {
+  display: inline-flex;
+}
+
+.insight-delta.is-hidden {
+  display: none;
+}
+
+.insight-delta.is-up {
+  color: #2f7a48;
+  border-color: rgba(47, 122, 72, 0.35);
+  background: rgba(47, 122, 72, 0.1);
+}
+
+.insight-delta.is-down {
+  color: #b54033;
+  border-color: rgba(181, 64, 51, 0.35);
+  background: rgba(181, 64, 51, 0.1);
+}
+
 .insights-top-label {
   margin: 0.58rem 0 0;
   color: var(--ink-soft);
