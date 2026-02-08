@@ -7,6 +7,7 @@ Minimalist white-space 3D artifact experience with:
 - 3D-anchored hotspots with occlusion fade
 - Guided narrative tour with cinematic camera moves
 - Kiosk-ready showcase mode that auto-plays tours and rotates artifacts
+- Optional idle reset (append `?idle=120`) that snaps back to the featured artifact/preset after inactivity
 - Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
 - Side-by-side compare mode with synchronized camera control
 - Artifact search across names, categories, tags, and story metadata
@@ -45,6 +46,16 @@ npm run preview
 - URLs are updated in place so any current view can be shared directly.
 - Build output is split with a dedicated Three.js vendor chunk for better browser caching.
 - `Popularity` sort uses persistent analytics counters when API is available (fallback: in-session metrics).
+
+## Kiosk Idle Reset
+
+Append `?idle=<seconds>` to the app URL to enable an inactivity reset (minimum 10 seconds; values below are clamped). The idle timer restarts on any pointer, touch, or keyboard activity. When it fires, the viewer:
+
+- Returns to the highest-ranked featured artifact and the `White` preset.
+- Clears search queries, category filters, compare mode, tours, showcase mode, and custom camera poses.
+- Reopens the hotspot view so the first interpretive note is in focus.
+
+Example: `https://localhost:5173/?idle=180` resets the kiosk three minutes after the last interaction so unattended sessions never stay stranded on obscure states.
 
 ## Asset Pipeline
 

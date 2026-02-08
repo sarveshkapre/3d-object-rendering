@@ -12,6 +12,9 @@ const VISUAL_PRESET_LABELS = {
   sand: "Sand",
   sky: "Sky"
 };
+const MIN_IDLE_RESET_MS = 10000;
+const DEFAULT_IDLE_RESET_MS = 0;
+let lastIdlePointerMoveTs = 0;
 
 function detectShortcutPlatform() {
   if (typeof navigator === "undefined") {
@@ -135,6 +138,7 @@ const elements = {
 };
 
 const parsedUrlState = parseUrlState();
+const idleResetTimeoutMs = parsedUrlState.idleResetMs ?? DEFAULT_IDLE_RESET_MS;
 const baseArtifactsById = Object.fromEntries(artifacts.map((artifact) => [artifact.id, structuredClone(artifact)]));
 const artifactSearchIndex = new Map();
 
@@ -191,7 +195,13 @@ const state = {
   previousTourState: {
     active: false,
     index: null
-  }
+  },
+  idleResetTimeoutMs,
+  idleResetEnabled: idleResetTimeoutMs >= MIN_IDLE_RESET_MS,
+  idleResetTimer: null,
+  idleResetLastActiveAt: Date.now(),
+  idleResetActive: false,
+  idleResetListenersBound: false
 };
 
 const analytics = createAnalyticsTracker({
@@ -395,6 +405,7 @@ function initialize() {
   renderRecentUpdatesPanel();
   applyVisualPreset(state.visualPreset, { skipTrack: true, skipUrlUpdate: true });
   bindEvents();
+  registerIdleResetListeners();
   setDetailView(state.activeDetailView, { skipUrlUpdate: true });
   setCompareModeUI(state.compareEnabled);
 
@@ -748,6 +759,7 @@ function bindEvents() {
 
   window.addEventListener("beforeunload", () => {
     clearShowcaseTimer();
+    clearIdleResetTimer();
     analytics.shutdown();
   });
 
@@ -755,7 +767,10 @@ function bindEvents() {
     if (document.visibilityState === "visible") {
       state.shortcutPlatform = detectShortcutPlatform();
       updateSearchShortcutHint();
+      touchIdleReset();
+      return;
     }
+    clearIdleResetTimer();
   });
 }
 
@@ -1028,6 +1043,7 @@ function setDetailView(view, options = {}) {
   const normalizedView = view === "story" ? "story" : "hotspots";
   const previousView = state.activeDetailView;
   state.activeDetailView = normalizedView;
+  const skipTrack = options.skipTrack === true;
 
   const showStory = normalizedView === "story";
   elements.storyPanel.hidden = !showStory;
@@ -1041,7 +1057,7 @@ function setDetailView(view, options = {}) {
 
   updateDetailToggleUI();
 
-  if (previousView !== normalizedView && state.currentArtifactId) {
+  if (!skipTrack && previousView !== normalizedView && state.currentArtifactId) {
     trackEvent("detail_view_changed", {
       artifactId: state.currentArtifactId,
       view: normalizedView
@@ -2405,6 +2421,7 @@ function focusSearchInput(options = {}) {
 }
 
 function handleKeydown(event) {
+  touchIdleReset();
   const normalizedKey = event.key.toLowerCase();
   const isSearchShortcut = normalizedKey === "k" && (event.metaKey || event.ctrlKey);
   if (isSearchShortcut) {
@@ -2597,6 +2614,192 @@ function showToast(message) {
   }, 1300);
 }
 
+function registerIdleResetListeners() {
+  if (!state.idleResetEnabled || state.idleResetListenersBound) {
+    return;
+  }
+
+  state.idleResetListenersBound = true;
+
+  const interactionHandler = () => {
+    touchIdleReset();
+  };
+
+  ["pointerdown", "pointerup", "click"].forEach((eventName) => {
+    window.addEventListener(eventName, interactionHandler, { passive: true });
+  });
+  window.addEventListener("touchstart", interactionHandler, { passive: true });
+  window.addEventListener("touchend", interactionHandler, { passive: true });
+  window.addEventListener("wheel", interactionHandler, { passive: true });
+  window.addEventListener("pointermove", handleIdlePointerMove, { passive: true });
+
+  scheduleIdleReset();
+}
+
+function handleIdlePointerMove() {
+  const now = Date.now();
+  if (now - lastIdlePointerMoveTs < 140) {
+    return;
+  }
+  lastIdlePointerMoveTs = now;
+  touchIdleReset();
+}
+
+function touchIdleReset() {
+  if (!state.idleResetEnabled) {
+    return;
+  }
+  state.idleResetActive = false;
+  state.idleResetLastActiveAt = Date.now();
+  scheduleIdleReset();
+}
+
+function clearIdleResetTimer() {
+  if (state.idleResetTimer) {
+    window.clearTimeout(state.idleResetTimer);
+    state.idleResetTimer = null;
+  }
+}
+
+function scheduleIdleReset() {
+  clearIdleResetTimer();
+  if (!state.idleResetEnabled || document.visibilityState === "hidden") {
+    return;
+  }
+
+  state.idleResetTimer = window.setTimeout(() => {
+    void runIdleReset();
+  }, state.idleResetTimeoutMs);
+}
+
+async function runIdleReset() {
+  if (!state.idleResetEnabled) {
+    return;
+  }
+
+  const now = Date.now();
+  const idleDuration = now - state.idleResetLastActiveAt;
+  if (idleDuration < state.idleResetTimeoutMs || state.primaryLoading) {
+    scheduleIdleReset();
+    return;
+  }
+
+  if (state.idleResetActive) {
+    scheduleIdleReset();
+    return;
+  }
+
+  state.idleResetActive = true;
+  state.idleResetLastActiveAt = now;
+  const previousArtifactId = state.currentArtifactId;
+  await resetViewerForIdle();
+  trackEvent("idle_reset_triggered", {
+    artifactId: previousArtifactId,
+    timeoutMs: state.idleResetTimeoutMs,
+    targetArtifactId: state.currentArtifactId
+  });
+  scheduleIdleReset();
+}
+
+async function resetViewerForIdle() {
+  const defaultArtifactId = getDefaultFeaturedArtifactId();
+  if (!defaultArtifactId) {
+    return;
+  }
+
+  if (state.curatorOpen) {
+    setCuratorOpen(false, { skipTrack: true });
+  }
+  if (state.moderationOpen) {
+    setModerationOpen(false, { skipTrack: true });
+  }
+  if (state.shortcutsOpen) {
+    setShortcutsOpen(false, { skipTrack: true });
+  }
+
+  if (state.showcaseActive) {
+    setShowcaseActive(false, { source: "idle_reset", skipTrack: true });
+  }
+  state.showcaseRequested = false;
+
+  if (state.searchQuery) {
+    state.searchQuery = "";
+    if (elements.searchInput) {
+      elements.searchInput.value = "";
+    }
+  }
+
+  if (state.currentCategory !== "all") {
+    state.currentCategory = "all";
+    renderFilters();
+  }
+
+  if (state.sortMode !== "featured") {
+    state.sortMode = "featured";
+    if (elements.sortSelect) {
+      elements.sortSelect.value = "featured";
+    }
+  }
+
+  if (state.activeDetailView !== "hotspots") {
+    setDetailView("hotspots", { skipUrlUpdate: true, skipTrack: true });
+  }
+
+  if (state.tourAutoPlay) {
+    setTourAutoplay(false, { skipTrack: true, skipUrlUpdate: true, source: "idle_reset" });
+  }
+
+  if (state.compareEnabled) {
+    state.compareEnabled = false;
+    state.compareReady = false;
+    setCompareModeUI(false);
+  }
+
+  if (state.visualPreset !== "white") {
+    applyVisualPreset("white", { skipTrack: true, skipUrlUpdate: true });
+  }
+
+  if (state.tourActive) {
+    primaryViewer.stopTour();
+  }
+
+  const defaultCompareId = getInitialCompareArtifactId(null);
+  if (defaultCompareId) {
+    state.compareArtifactId = defaultCompareId;
+  }
+
+  const artifactChanged = state.currentArtifactId !== defaultArtifactId;
+  if (artifactChanged) {
+    await loadArtifact(defaultArtifactId, { restoreFromUrl: false, source: "idle_reset", skipCompareReload: true });
+  } else {
+    primaryViewer.resetView();
+    const firstHotspot = state.hotspotData[0];
+    if (firstHotspot) {
+      primaryViewer.selectHotspot(firstHotspot.id, { focus: false });
+    } else {
+      renderHotspotCard();
+    }
+    renderGallery();
+    renderCompareList();
+    renderInsightsPanel();
+  }
+
+  showToast("Reset after idle");
+  scheduleUrlUpdate();
+}
+
+function getDefaultFeaturedArtifactId() {
+  if (!artifacts.length) {
+    return null;
+  }
+
+  const sorted = [...artifacts].sort((left, right) => {
+    return (left.featuredRank ?? 999) - (right.featuredRank ?? 999);
+  });
+
+  return sorted[0]?.id ?? artifacts[0].id;
+}
+
 function handleResize() {
   primaryViewer.resize(elements.canvas.clientWidth, elements.canvas.clientHeight);
   compareViewer.resize(elements.canvasCompare.clientWidth, elements.canvasCompare.clientHeight);
@@ -2653,6 +2856,10 @@ function updateUrlState() {
 
   if (state.showcaseActive) {
     params.set("showcase", "1");
+  }
+
+  if (state.idleResetEnabled) {
+    params.set("idle", String(Math.round(state.idleResetTimeoutMs / 1000)));
   }
 
   const cameraPose = primaryViewer.getCameraPose();
@@ -2764,6 +2971,19 @@ function normalizeSortMode(value) {
   return supportedSorts.has(value) ? value : "featured";
 }
 
+function parseIdleResetParam(rawValue) {
+  if (rawValue === null || rawValue === "") {
+    return DEFAULT_IDLE_RESET_MS;
+  }
+
+  const seconds = Number(rawValue);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return DEFAULT_IDLE_RESET_MS;
+  }
+
+  return Math.max(MIN_IDLE_RESET_MS, Math.round(seconds * 1000));
+}
+
 function parseUrlState() {
   const params = new URLSearchParams(window.location.search);
   const artifactId = params.get("artifact");
@@ -2777,6 +2997,7 @@ function parseUrlState() {
   const sortMode = normalizeSortMode(params.get("sort"));
   const visualPreset = normalizeVisualPreset(params.get("preset"));
   const showcaseActive = params.get("showcase") === "1";
+  const idleResetMs = parseIdleResetParam(params.get("idle"));
 
   return {
     artifactId,
@@ -2792,6 +3013,7 @@ function parseUrlState() {
     showcaseActive,
     detailView,
     tourAutoPlay,
+    idleResetMs,
     viewSpecified: params.has("view"),
     hotspotSpecified: params.has("hotspot"),
     tourSpecified: params.has("tour"),
