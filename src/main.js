@@ -110,6 +110,7 @@ const elements = {
 
 const parsedUrlState = parseUrlState();
 const baseArtifactsById = Object.fromEntries(artifacts.map((artifact) => [artifact.id, structuredClone(artifact)]));
+const artifactSearchIndex = new Map();
 
 const state = {
   currentCategory: "all",
@@ -170,6 +171,8 @@ const analytics = createAnalyticsTracker({
   endpoint: import.meta.env.VITE_ANALYTICS_ENDPOINT ?? "/api/analytics/ingest",
   debug: import.meta.env.DEV || import.meta.env.VITE_ANALYTICS_DEBUG === "1"
 });
+
+refreshArtifactSearchIndexes();
 
 const primaryViewer = new ArtifactViewer({
   canvas: elements.canvas,
@@ -813,6 +816,8 @@ async function loadArtifact(artifactId, options = {}) {
   } finally {
     window.setTimeout(() => setPrimaryLoading(false), 220);
   }
+
+  refreshArtifactSearchIndexes();
 }
 
 async function loadServerData() {
@@ -2778,29 +2783,24 @@ function updateSessionMetrics(eventName, details = {}) {
 }
 
 function getVisibleArtifacts() {
-  const query = state.searchQuery.trim().toLowerCase();
+  const normalizedQuery = normalizeSearchText(state.searchQuery);
 
   return artifacts.filter((artifact) => {
     if (state.currentCategory !== "all" && artifact.category !== state.currentCategory) {
       return false;
     }
 
-    if (!query) {
+    if (!normalizedQuery) {
       return true;
     }
 
-    const searchHaystack = [
-      artifact.title,
-      artifact.hook,
-      artifact.category,
-      ...(artifact.keywords ?? []),
-      artifact.story?.title ?? "",
-      artifact.story?.summary ?? ""
-    ]
-      .join(" ")
-      .toLowerCase();
+    let haystack = artifactSearchIndex.get(artifact.id);
+    if (!haystack) {
+      haystack = buildArtifactSearchText(artifact);
+      artifactSearchIndex.set(artifact.id, haystack);
+    }
 
-    return searchHaystack.includes(query);
+    return haystack.includes(normalizedQuery);
   });
 }
 
@@ -2860,4 +2860,56 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildArtifactSearchText(artifact) {
+  if (!artifact) {
+    return "";
+  }
+
+  const storyBody = Array.isArray(artifact.story?.body) ? artifact.story.body : [];
+  const storyReferences = Array.isArray(artifact.story?.references)
+    ? artifact.story.references.flatMap((reference) => [reference.label, reference.url])
+    : [];
+
+  const hotspotText = Array.isArray(artifact.hotspots)
+    ? artifact.hotspots.flatMap((hotspot) => [hotspot.id, hotspot.label, hotspot.title, hotspot.body, hotspot.reference ?? ""])
+    : [];
+
+  const raw = [
+    artifact.id,
+    artifact.title,
+    artifact.hook,
+    artifact.category,
+    ...(artifact.keywords ?? []),
+    artifact.story?.title ?? "",
+    artifact.story?.summary ?? "",
+    ...storyBody,
+    ...storyReferences,
+    ...hotspotText
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return normalizeSearchText(raw);
+}
+
+function refreshArtifactSearchIndexes(artifactIds = artifacts.map((artifact) => artifact.id)) {
+  artifactIds.forEach((artifactId) => {
+    const artifact = artifactMap.get(artifactId);
+    if (!artifact) {
+      artifactSearchIndex.delete(artifactId);
+      return;
+    }
+    artifactSearchIndex.set(artifactId, buildArtifactSearchText(artifact));
+  });
 }
