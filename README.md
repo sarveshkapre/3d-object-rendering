@@ -10,6 +10,7 @@ Minimalist white-space 3D artifact experience with:
 - Optional idle reset (append `?idle=120`) that snaps back to the featured artifact/preset after inactivity
 - Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
 - Side-by-side compare mode with synchronized camera control
+- Compare mode remembers your last partner per artifact plus your sync toggle preference so kiosk docents can reopen it without reconfiguring pairings
 - Artifact search across names, categories, tags, and story metadata
 - Story panel per artifact (curated narrative + references)
 - Deep-link sharing (`artifact`, `hotspot`, `tour`, `autoplay`, `cam`, `compare`, `sync`, `q`, `sort`, `view`, `preset`, `showcase`) with Web Share API + clipboard fallback for mobile visitors

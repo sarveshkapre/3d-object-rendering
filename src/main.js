@@ -5,6 +5,7 @@ import { ArtifactViewer } from "./viewer.js";
 
 const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
 const SESSION_METRICS_STORAGE_KEY = "artifact_viewer_metrics";
+const COMPARE_PREFS_STORAGE_KEY = "artifact_viewer_compare_prefs_v1";
 const TOUR_AUTOPLAY_DELAY_MS = 4600;
 const VISUAL_PRESETS = ["white", "sand", "sky"];
 const VISUAL_PRESET_LABELS = {
@@ -143,6 +144,7 @@ const parsedUrlState = parseUrlState();
 const idleResetTimeoutMs = parsedUrlState.idleResetMs ?? DEFAULT_IDLE_RESET_MS;
 const baseArtifactsById = Object.fromEntries(artifacts.map((artifact) => [artifact.id, structuredClone(artifact)]));
 const artifactSearchIndex = new Map();
+const comparePreferences = loadComparePreferences();
 
 const state = {
   currentCategory: "all",
@@ -151,8 +153,10 @@ const state = {
   currentArtifactId: null,
   compareArtifactId: getInitialCompareArtifactId(parsedUrlState.compareArtifactId),
   compareEnabled: parsedUrlState.compareEnabled,
-  compareSync: parsedUrlState.compareSync,
+  compareSync: parsedUrlState.syncSpecified ? parsedUrlState.compareSync : comparePreferences.syncEnabled,
   compareReady: false,
+  comparePreferences,
+  comparePinnedFromUrl: Boolean(parsedUrlState.compareArtifactId && artifactMap.has(parsedUrlState.compareArtifactId)),
   visualPreset: parsedUrlState.visualPreset,
   activeDetailView: parsedUrlState.detailView,
   hotspotData: [],
@@ -433,7 +437,7 @@ async function bootstrap(artifactId) {
     return;
   }
 
-  ensureValidCompareArtifact();
+  ensureValidCompareArtifact({ respectPin: true });
   await loadCompareArtifact(state.compareArtifactId, {
     syncFromPrimary: true,
     source: "bootstrap"
@@ -516,8 +520,8 @@ function bindEvents() {
     }
 
     state.compareEnabled = true;
-    state.compareSync = true;
-    ensureValidCompareArtifact();
+    state.comparePinnedFromUrl = false;
+    ensureValidCompareArtifact({ respectPin: false });
     setCompareModeUI(true);
     await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true, source: "compare_toggle" });
     scheduleUrlUpdate();
@@ -535,6 +539,8 @@ function bindEvents() {
     }
 
     state.compareSync = !state.compareSync;
+    state.comparePinnedFromUrl = false;
+    setPreferredCompareSync(state.compareSync);
     updateHeaderControls();
 
     if (state.compareSync && state.compareReady) {
@@ -800,6 +806,10 @@ async function loadArtifact(artifactId, options = {}) {
   const loadStartedAt = performance.now();
 
   state.currentArtifactId = artifactId;
+  if (!options.restoreFromUrl && state.comparePinnedFromUrl) {
+    state.comparePinnedFromUrl = false;
+  }
+  ensureValidCompareArtifact({ respectPin: options.restoreFromUrl });
   state.selectedHotspot = null;
   state.tourActive = false;
   state.previousTourState = { active: false, index: null };
@@ -846,7 +856,7 @@ async function loadArtifact(artifactId, options = {}) {
     }
 
     if (state.compareEnabled && !options.skipCompareReload) {
-      ensureValidCompareArtifact();
+      ensureValidCompareArtifact({ respectPin: options.restoreFromUrl });
       await loadCompareArtifact(state.compareArtifactId, { syncFromPrimary: true, source: "primary_changed" });
     }
 
@@ -1034,15 +1044,37 @@ async function loadCompareArtifact(artifactId, options = {}) {
   }
 }
 
-function ensureValidCompareArtifact() {
+function ensureValidCompareArtifact(options = {}) {
   if (!state.currentArtifactId) {
     return;
   }
 
-  if (!artifactMap.has(state.compareArtifactId) || state.compareArtifactId === state.currentArtifactId) {
-    const alternative = artifacts.find((artifact) => artifact.id !== state.currentArtifactId);
-    state.compareArtifactId = alternative?.id ?? state.currentArtifactId;
+  const respectPin = options.respectPin === true;
+  const pinnedActive = respectPin && state.comparePinnedFromUrl;
+  const currentPartner = state.compareArtifactId;
+  const currentValid = artifactMap.has(currentPartner) && currentPartner !== state.currentArtifactId;
+
+  if (pinnedActive) {
+    if (currentValid) {
+      return;
+    }
+    state.comparePinnedFromUrl = false;
   }
+
+  let nextPartner = currentValid ? currentPartner : null;
+
+  if (!nextPartner) {
+    const preferred = getPreferredComparePartner(state.currentArtifactId);
+    if (preferred && preferred !== state.currentArtifactId) {
+      nextPartner = preferred;
+    }
+  }
+
+  if (!nextPartner || !artifactMap.has(nextPartner) || nextPartner === state.currentArtifactId) {
+    nextPartner = artifacts.find((artifact) => artifact.id !== state.currentArtifactId)?.id ?? state.currentArtifactId;
+  }
+
+  state.compareArtifactId = nextPartner;
 }
 
 function restoreFromUrlState() {
@@ -1956,6 +1988,7 @@ function renderCompareList() {
       if (!state.compareEnabled || artifact.id === state.currentArtifactId) {
         return;
       }
+      state.comparePinnedFromUrl = false;
       trackEvent("compare_artifact_selected", {
         primaryArtifactId: state.currentArtifactId,
         compareArtifactId: artifact.id
@@ -2998,6 +3031,7 @@ async function resetViewerForIdle() {
     state.compareReady = false;
     setCompareModeUI(false);
   }
+  state.comparePinnedFromUrl = false;
 
   if (state.visualPreset !== "white") {
     applyVisualPreset("white", { skipTrack: true, skipUrlUpdate: true });
@@ -3007,15 +3041,11 @@ async function resetViewerForIdle() {
     primaryViewer.stopTour();
   }
 
-  const defaultCompareId = getInitialCompareArtifactId(null);
-  if (defaultCompareId) {
-    state.compareArtifactId = defaultCompareId;
-  }
-
   const artifactChanged = state.currentArtifactId !== defaultArtifactId;
   if (artifactChanged) {
     await loadArtifact(defaultArtifactId, { restoreFromUrl: false, source: "idle_reset", skipCompareReload: true });
   } else {
+    ensureValidCompareArtifact({ respectPin: false });
     primaryViewer.resetView();
     const firstHotspot = state.hotspotData[0];
     if (firstHotspot) {
@@ -3242,6 +3272,8 @@ function parseUrlState() {
   const visualPreset = normalizeVisualPreset(params.get("preset"));
   const showcaseActive = params.get("showcase") === "1";
   const idleResetMs = parseIdleResetParam(params.get("idle"));
+  const syncSpecified = params.has("sync");
+  const compareSync = syncSpecified ? params.get("sync") !== "0" : true;
 
   return {
     artifactId,
@@ -3250,7 +3282,8 @@ function parseUrlState() {
     cameraPose,
     compareArtifactId,
     compareEnabled: Boolean(compareArtifactId && artifactMap.has(compareArtifactId)),
-    compareSync: params.get("sync") !== "0",
+    compareSync,
+    syncSpecified,
     searchQuery: params.get("q")?.trim() ?? "",
     sortMode,
     visualPreset,
@@ -3335,6 +3368,103 @@ function persistSessionMetrics(metrics) {
   } catch {
     // Ignore storage quota and availability failures.
   }
+}
+
+function loadComparePreferences() {
+  const fallback = {
+    syncEnabled: true,
+    artifactPartners: {}
+  };
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return {
+      syncEnabled: fallback.syncEnabled,
+      artifactPartners: {}
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(COMPARE_PREFS_STORAGE_KEY);
+    if (!raw) {
+      return {
+        syncEnabled: fallback.syncEnabled,
+        artifactPartners: {}
+      };
+    }
+    const parsed = JSON.parse(raw);
+    const artifactPartners =
+      typeof parsed.artifactPartners === "object" && parsed.artifactPartners
+        ? Object.fromEntries(
+            Object.entries(parsed.artifactPartners).filter(
+              ([key, value]) => typeof key === "string" && typeof value === "string"
+            )
+          )
+        : {};
+
+    return {
+      syncEnabled: typeof parsed.syncEnabled === "boolean" ? parsed.syncEnabled : fallback.syncEnabled,
+      artifactPartners
+    };
+  } catch {
+    return {
+      syncEnabled: fallback.syncEnabled,
+      artifactPartners: {}
+    };
+  }
+}
+
+function persistComparePreferences(preferences) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      COMPARE_PREFS_STORAGE_KEY,
+      JSON.stringify({
+        syncEnabled: Boolean(preferences.syncEnabled),
+        artifactPartners: preferences.artifactPartners ?? {}
+      })
+    );
+  } catch {
+    // Ignore storage quota issues.
+  }
+}
+
+function getPreferredComparePartner(primaryArtifactId) {
+  if (!primaryArtifactId) {
+    return null;
+  }
+  const partnerId = state.comparePreferences.artifactPartners?.[primaryArtifactId];
+  if (!partnerId || partnerId === primaryArtifactId || !artifactMap.has(partnerId)) {
+    if (state.comparePreferences.artifactPartners?.[primaryArtifactId]) {
+      delete state.comparePreferences.artifactPartners[primaryArtifactId];
+      persistComparePreferences(state.comparePreferences);
+    }
+    return null;
+  }
+  return partnerId;
+}
+
+function setPreferredComparePartner(primaryArtifactId, partnerId) {
+  if (
+    !primaryArtifactId ||
+    !partnerId ||
+    primaryArtifactId === partnerId ||
+    !artifactMap.has(primaryArtifactId) ||
+    !artifactMap.has(partnerId)
+  ) {
+    return;
+  }
+  if (!state.comparePreferences.artifactPartners) {
+    state.comparePreferences.artifactPartners = {};
+  }
+  state.comparePreferences.artifactPartners[primaryArtifactId] = partnerId;
+  persistComparePreferences(state.comparePreferences);
+}
+
+function setPreferredCompareSync(enabled) {
+  state.comparePreferences.syncEnabled = Boolean(enabled);
+  persistComparePreferences(state.comparePreferences);
 }
 
 function createEmptyMetricsRecord() {
@@ -3564,6 +3694,7 @@ function recordComparePair(primaryArtifactId, compareArtifactId, options = {}) {
     compareArtifactId,
     compareSource: source
   });
+  setPreferredComparePartner(primaryArtifactId, compareArtifactId);
 }
 
 function escapeHtml(value) {
