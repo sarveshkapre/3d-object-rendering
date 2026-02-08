@@ -11,7 +11,7 @@ Minimalist white-space 3D artifact experience with:
 - Side-by-side compare mode with synchronized camera control
 - Artifact search across names, categories, tags, and story metadata
 - Story panel per artifact (curated narrative + references)
-- Deep-link sharing (`artifact`, `hotspot`, `tour`, `autoplay`, `cam`, `compare`, `sync`, `q`, `sort`, `view`, `preset`, `showcase`)
+- Deep-link sharing (`artifact`, `hotspot`, `tour`, `autoplay`, `cam`, `compare`, `sync`, `q`, `sort`, `view`, `preset`, `showcase`) with Web Share API + clipboard fallback for mobile visitors
 - Artifact library with category filters
 - Gallery sorting (`Featured`, `Newest`, `Popularity`, `A-Z`)
 - Event analytics pipeline (batched client events with optional backend endpoint)

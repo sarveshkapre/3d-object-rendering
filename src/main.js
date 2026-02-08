@@ -674,22 +674,8 @@ function bindEvents() {
     elements.fullscreenBtn.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
   });
 
-  elements.shareBtn.addEventListener("click", async () => {
-    const url = window.location.href;
-
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast("Share link copied");
-      trackEvent("share_link_copied", {
-        artifactId: state.currentArtifactId,
-        compareEnabled: state.compareEnabled
-      });
-    } catch {
-      showToast("Clipboard unavailable. URL updated in address bar.");
-      trackEvent("share_link_copy_failed", {
-        artifactId: state.currentArtifactId
-      });
-    }
+  elements.shareBtn.addEventListener("click", () => {
+    void shareCurrentView();
   });
 
   elements.hotspotLink.addEventListener("click", () => {
@@ -2505,6 +2491,14 @@ function scheduleUrlUpdate() {
   state.urlUpdateTimer = window.setTimeout(updateUrlState, 220);
 }
 
+function flushPendingUrlUpdate() {
+  if (state.urlUpdateTimer) {
+    window.clearTimeout(state.urlUpdateTimer);
+    state.urlUpdateTimer = null;
+  }
+  updateUrlState();
+}
+
 function updateUrlState() {
   if (!state.currentArtifactId) {
     return;
@@ -2555,6 +2549,74 @@ function updateUrlState() {
 
   const nextUrl = `${window.location.pathname}?${params.toString()}`;
   window.history.replaceState({}, "", nextUrl);
+}
+
+async function shareCurrentView(options = {}) {
+  const urlBeforeShare = window.location.href;
+  if (!options.skipUrlRefresh) {
+    flushPendingUrlUpdate();
+  }
+
+  const shareUrl = new URL(window.location.href);
+  const artifactTitle = elements.artifactTitle?.textContent?.trim();
+  const shareTitle = document.title || "Artifact Viewer";
+  const shareText = artifactTitle ? `${artifactTitle} · Artifact Viewer` : shareTitle;
+  const payload = {
+    title: shareTitle,
+    text: shareText,
+    url: shareUrl.toString()
+  };
+
+  const canUseNavigatorShare =
+    typeof navigator.share === "function" &&
+    (typeof navigator.canShare !== "function" || navigator.canShare(payload));
+
+  if (canUseNavigatorShare) {
+    try {
+      await navigator.share(payload);
+      trackEvent("share_native_success", {
+        artifactId: state.currentArtifactId,
+        compareEnabled: state.compareEnabled
+      });
+      trackEvent("share_action_recorded", {
+        artifactId: state.currentArtifactId,
+        mechanism: "native"
+      });
+      showToast("Shared via native sheet");
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        trackEvent("share_native_cancelled", {
+          artifactId: state.currentArtifactId
+        });
+        return;
+      }
+
+      trackEvent("share_native_failed", {
+        artifactId: state.currentArtifactId,
+        reason: String(error && error.message ? error.message : "unknown")
+      });
+    }
+  }
+
+  const finalUrl = payload.url;
+
+  try {
+    await navigator.clipboard.writeText(finalUrl);
+    showToast("Share link copied");
+    trackEvent("share_link_copied", {
+      artifactId: state.currentArtifactId,
+      compareEnabled: state.compareEnabled
+    });
+  } catch {
+    trackEvent("share_link_copy_failed", {
+      artifactId: state.currentArtifactId
+    });
+    showToast("Clipboard unavailable. URL updated in address bar.");
+    if (options.restoreUrl === true) {
+      window.history.replaceState({}, "", urlBeforeShare);
+    }
+  }
 }
 
 function serializeCameraPose(cameraPose) {
@@ -2743,7 +2805,7 @@ function applyMetricEventToRecord(record, eventName, details = {}) {
     return true;
   }
 
-  if (eventName === "share_link_copied") {
+  if (eventName === "share_link_copied" || eventName === "share_action_recorded") {
     record.shares += 1;
     return true;
   }

@@ -218,7 +218,7 @@ function applyAnalyticsEvent(store, event) {
     existing.tourStarts += 1;
   } else if (eventName === "tour_last_step_reached") {
     existing.tourLastStepReached += 1;
-  } else if (eventName === "share_link_copied") {
+  } else if (eventName === "share_link_copied" || eventName === "share_action_recorded") {
     existing.shares += 1;
   } else if (eventName === "compare_artifact_viewed") {
     existing.compareViews += 1;
