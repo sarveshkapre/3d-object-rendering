@@ -155,6 +155,7 @@ const state = {
   activeDetailView: parsedUrlState.detailView,
   hotspotData: [],
   selectedHotspot: null,
+  pendingHotspotFocus: null,
   tourActive: false,
   tourIndex: 0,
   tourTotal: 0,
@@ -683,12 +684,14 @@ function bindEvents() {
   });
 
   elements.listToggleBtn.addEventListener("click", () => {
-    setDetailView("hotspots");
+    setDetailView("hotspots", { focusHotspotList: true });
   });
 
   elements.storyToggleBtn.addEventListener("click", () => {
     setDetailView("story");
   });
+
+  elements.hotspotListPanel.addEventListener("keydown", handleHotspotListKeydown);
 
   elements.prevStepBtn.addEventListener("click", () => primaryViewer.previousTourStep());
   elements.nextStepBtn.addEventListener("click", () => primaryViewer.nextTourStep());
@@ -1056,6 +1059,12 @@ function setDetailView(view, options = {}) {
   }
 
   updateDetailToggleUI();
+
+  if (normalizedView === "hotspots" && options.focusHotspotList) {
+    const fallbackHotspotId = state.selectedHotspot?.id ?? state.hotspotData[0]?.id ?? null;
+    queueHotspotListFocus(fallbackHotspotId, { fallbackToFirst: true });
+    syncHotspotListKeyboardState();
+  }
 
   if (!skipTrack && previousView !== normalizedView && state.currentArtifactId) {
     trackEvent("detail_view_changed", {
@@ -1905,16 +1914,31 @@ function renderHotspotList() {
   const artifact = artifactMap.get(state.currentArtifactId);
   if (!artifact) {
     elements.hotspotListPanel.innerHTML = "";
+    state.pendingHotspotFocus = null;
     return;
   }
 
-  const selectedId = state.selectedHotspot?.id ?? "";
+  if (!state.hotspotData.length) {
+    elements.hotspotListPanel.innerHTML = `
+      <p class="panel-label">${escapeHtml(artifact.hotspotTitle)}</p>
+      <p class="empty-state">No hotspot data</p>
+    `;
+    state.pendingHotspotFocus = null;
+    return;
+  }
 
+  const setSize = state.hotspotData.length;
   const itemsMarkup = state.hotspotData
     .map((hotspot, index) => {
-      const selectedClass = selectedId === hotspot.id ? "is-active" : "";
+      const selectedClass = state.selectedHotspot?.id === hotspot.id ? "is-active" : "";
       return `
-        <button class="hotspot-list-item ${selectedClass}" type="button" data-hotspot-id="${hotspot.id}">
+        <button
+          class="hotspot-list-item ${selectedClass}"
+          type="button"
+          data-hotspot-id="${hotspot.id}"
+          aria-posinset="${index + 1}"
+          aria-setsize="${setSize}"
+        >
           <span class="hotspot-list-index">${String(index + 1).padStart(2, "0")}</span>
           <span class="hotspot-list-copy">
             <span class="hotspot-list-label">${escapeHtml(hotspot.label)}</span>
@@ -1925,18 +1949,75 @@ function renderHotspotList() {
     })
     .join("");
 
+  const listLabel = `${artifact.hotspotTitle} hotspots`;
   elements.hotspotListPanel.innerHTML = `
     <p class="panel-label">${escapeHtml(artifact.hotspotTitle)}</p>
-    <div class="hotspot-list">${itemsMarkup || '<p class="empty-state">No hotspot data</p>'}</div>
+    <div class="hotspot-list" role="listbox" aria-label="${escapeHtml(listLabel)}">
+      ${itemsMarkup}
+    </div>
   `;
 
-  elements.hotspotListPanel.querySelectorAll("[data-hotspot-id]").forEach((button) => {
+  elements.hotspotListPanel.querySelectorAll("[data-hotspot-id]").forEach((button, index) => {
+    button.dataset.hotspotIndex = String(index);
     button.addEventListener("click", () => {
       const hotspotId = button.dataset.hotspotId;
+      if (!hotspotId) {
+        return;
+      }
+      queueHotspotListFocus(hotspotId);
       setDetailView("hotspots", { skipUrlUpdate: true });
       primaryViewer.selectHotspot(hotspotId, { focus: true });
     });
   });
+
+  syncHotspotListKeyboardState();
+}
+
+function getHotspotListButtons() {
+  return Array.from(elements.hotspotListPanel.querySelectorAll("[data-hotspot-id]"));
+}
+
+function queueHotspotListFocus(targetId, options = {}) {
+  state.pendingHotspotFocus = {
+    targetId: targetId ?? null,
+    fallbackToFirst: options.fallbackToFirst === true
+  };
+}
+
+function syncHotspotListKeyboardState() {
+  const buttons = getHotspotListButtons();
+  if (!buttons.length) {
+    state.pendingHotspotFocus = null;
+    return;
+  }
+
+  const selectedId = state.selectedHotspot?.id ?? null;
+  let activeButton = selectedId ? buttons.find((button) => button.dataset.hotspotId === selectedId) ?? null : null;
+  if (!activeButton) {
+    activeButton = buttons[0];
+  }
+
+  buttons.forEach((button) => {
+    const isActive = button === activeButton;
+    button.tabIndex = isActive ? 0 : -1;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  const pendingFocus = state.pendingHotspotFocus;
+  if (pendingFocus) {
+    let focusButton = null;
+    if (pendingFocus.targetId) {
+      focusButton = buttons.find((button) => button.dataset.hotspotId === pendingFocus.targetId) ?? null;
+    }
+    if (!focusButton && pendingFocus.fallbackToFirst) {
+      focusButton = buttons[0];
+    }
+    if (focusButton) {
+      focusButton.focus();
+    }
+    state.pendingHotspotFocus = null;
+  }
 }
 
 function renderStoryPanel() {
@@ -2098,6 +2179,73 @@ function renderHotspotCard() {
 
   elements.tourStepper.hidden = !state.tourActive;
   elements.tourProgress.textContent = `${state.tourIndex + 1}/${state.tourTotal}`;
+}
+
+function handleHotspotListKeydown(event) {
+  if (state.activeDetailView !== "hotspots") {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  const button = target.closest("button[data-hotspot-id]");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const buttons = getHotspotListButtons();
+  if (!buttons.length) {
+    return;
+  }
+
+  const currentIndex = buttons.findIndex((entry) => entry === button);
+  if (currentIndex < 0) {
+    return;
+  }
+
+  const key = event.key;
+  let nextIndex = null;
+
+  if (key === "ArrowDown" || key === "ArrowRight") {
+    nextIndex = Math.min(currentIndex + 1, buttons.length - 1);
+  } else if (key === "ArrowUp" || key === "ArrowLeft") {
+    nextIndex = Math.max(currentIndex - 1, 0);
+  } else if (key === "Home") {
+    nextIndex = 0;
+  } else if (key === "End") {
+    nextIndex = buttons.length - 1;
+  } else if (key === "Enter" || key === " ") {
+    event.preventDefault();
+    const hotspotId = button.dataset.hotspotId;
+    if (hotspotId) {
+      queueHotspotListFocus(hotspotId);
+      primaryViewer.selectHotspot(hotspotId, { focus: true });
+    }
+    return;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  if (nextIndex === currentIndex) {
+    return;
+  }
+
+  const nextButton = buttons[nextIndex];
+  if (!nextButton) {
+    return;
+  }
+
+  const hotspotId = nextButton.dataset.hotspotId;
+  if (!hotspotId) {
+    return;
+  }
+
+  queueHotspotListFocus(hotspotId);
+  primaryViewer.selectHotspot(hotspotId, { focus: true });
 }
 
 function updateTourAutoplayUI() {
@@ -2540,7 +2688,7 @@ function handleKeydown(event) {
     event.preventDefault();
     haltShowcaseForManualInteraction("keyboard_s");
     const nextView = state.activeDetailView === "story" ? "hotspots" : "story";
-    setDetailView(nextView);
+    setDetailView(nextView, { focusHotspotList: nextView === "hotspots" });
     trackEvent("keyboard_shortcut_used", { key: "s", action: "toggle_story" });
     return;
   }

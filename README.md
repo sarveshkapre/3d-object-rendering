@@ -18,6 +18,7 @@ Minimalist white-space 3D artifact experience with:
 - Event analytics pipeline (batched client events with optional backend endpoint)
 - Tour autoplay + in-session progress restore per artifact
 - Keyboard shortcuts (`Cmd/Ctrl+K` focus search, `T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
+- Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
 - Live session insights panel (views, hotspot engagement, tour usage, shares, top hotspots)
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
