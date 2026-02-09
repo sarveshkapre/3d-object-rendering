@@ -7,9 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `insights-sparkline-history` (P1): Keep the last N poll snapshots and render tiny per-metric sparklines so trend direction is visible even when deltas net to zero.
-- [ ] `cms-input-guards` (P1): Enforce URL/protocol allowlists and max field lengths on CMS payloads to reduce malformed or unsafe curator submissions.
+- [ ] `cms-input-guards` (P1, selected): Enforce URL/protocol allowlists and max field lengths on CMS payloads (submissions + moderation reasons) so curator tooling cannot store unsafe links or runaway text blobs.
+- [ ] `insights-sparkline-history` (P1, selected): Keep the last N server poll snapshots and render tiny per-metric sparklines so trend direction is visible even when deltas net to zero.
+- [ ] `ci-github-actions` (P1, selected): Add a minimal GitHub Actions workflow that runs `npm test` + `npm run build` on pushes/PRs for production readiness.
 - [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
+- [ ] `curator-client-validation` (P2): Mirror server-side CMS validation rules in the Curator form (length counters, URL validation, keyword limits) so curators get fast feedback before submitting.
+- [ ] `insights-export` (P3): Add a one-click "Copy metrics" action in the insights panel for docents to paste session summaries into reports.
+- [ ] `viewer-load-retry` (P2): When a model load fails, offer an in-place retry + fallback to "low load" preset to keep kiosk sessions moving.
+- [ ] `accessibility-audit` (P2): Run an a11y sweep on overlays/modals (focus trap, aria labels, roving focus) and add regression checks for keyboard-only kiosk flows.
+- [ ] `asset-bundling-health` (P3): Add a build-time check that confirms `public/models/*.glb` exist and match the artifact catalog so deployments do not ship broken links.
+- [ ] `analytics-retention-policy` (P3): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 
 ## Implemented
 - 2026-02-08 · `store-concurrency-guard`: Replaced per-request file loading with an in-memory store plus serialized mutation queue, and fixed data directory creation to respect custom `API_STORE_PATH` values. Evidence: `server/index.js`, `npm test`, `npm run smoke:api`.
@@ -42,6 +49,7 @@
 - Concurrent API writes are common when kiosks run for long sessions; serializing store mutations and proving it with parallel-ingest tests prevents subtle data loss that would otherwise invalidate popularity and moderation analytics.
 - Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
+- Market scan (untrusted): Modern web viewers often ship annotations/hotspots + guided tours, plus optional AR entry points (e.g. `<model-viewer>`, Sketchfab, and Smithsonian Voyager). Sources: https://modelviewer.dev , https://sketchfab.com/features/annotations , https://3d.si.edu/voyager
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
