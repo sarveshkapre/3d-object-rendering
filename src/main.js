@@ -844,6 +844,40 @@ function bindEvents() {
     });
   });
 
+  elements.insightsContent.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const button = target.closest("button[data-action='copy-insights']");
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    const artifactId = state.currentArtifactId;
+    const payload = formatInsightsExportText(artifactId);
+    if (!payload) {
+      showToast("No metrics to copy");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      showToast("Metrics copied");
+      trackEvent("insights_export_copied", {
+        artifactId,
+        source: state.serverMetrics[artifactId] ? "server" : "session"
+      });
+    } catch (error) {
+      showToast("Clipboard unavailable");
+      trackEvent("insights_export_failed", {
+        artifactId,
+        reason: String(error && error.message ? error.message : "unknown")
+      });
+    }
+  });
+
   elements.updatesContent.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -2850,6 +2884,9 @@ function renderInsightsPanel() {
     : '<li class="insights-top-item is-empty"><span>No compare pairings yet</span><strong>0</strong></li>';
 
   elements.insightsContent.innerHTML = `
+    <div class="insights-actions">
+      <button class="chip-btn" type="button" data-action="copy-insights">Copy metrics</button>
+    </div>
     <div class="insights-grid">
       ${metricItems
         .map(
@@ -2889,6 +2926,53 @@ function renderInsightsPanel() {
       </section>
     </div>
   `;
+}
+
+function formatInsightsExportText(artifactId) {
+  if (!artifactId) {
+    return "";
+  }
+
+  const artifact = artifactMap.get(artifactId);
+  const metrics = getDisplayMetricsForArtifact(artifactId);
+  const source = state.serverMetrics[artifactId] ? "server" : "session";
+
+  const lines = [];
+  lines.push("Artifact Viewer · Session Insights");
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  lines.push(`Artifact: ${artifact?.title ?? artifactId} (${artifactId})`);
+  lines.push(`Metrics source: ${source}`);
+  lines.push("");
+
+  INSIGHTS_METRIC_DEFINITIONS.forEach((definition) => {
+    const value = metrics[definition.key] ?? 0;
+    lines.push(`${definition.label}: ${value}`);
+  });
+
+  const topHotspots = Object.entries(metrics.hotspotCounts ?? {})
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 5)
+    .map(([hotspotId, count]) => {
+      const hotspot = artifact?.hotspots?.find((item) => item.id === hotspotId);
+      return `${hotspot?.label ?? hotspotId}: ${count}`;
+    });
+  if (topHotspots.length) {
+    lines.push("");
+    lines.push("Top hotspots:");
+    topHotspots.forEach((line) => lines.push(`- ${line}`));
+  }
+
+  const topPartners = Object.entries(metrics.comparePartnerCounts ?? {})
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 5)
+    .map(([partnerId, count]) => `${artifactMap.get(partnerId)?.title ?? partnerId}: ${count}`);
+  if (topPartners.length) {
+    lines.push("");
+    lines.push("Top compare partners:");
+    topPartners.forEach((line) => lines.push(`- ${line}`));
+  }
+
+  return lines.join("\n");
 }
 
 function renderRecentUpdatesPanel() {
