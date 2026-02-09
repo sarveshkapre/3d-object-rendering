@@ -243,3 +243,73 @@ test("cms submission approve/delete/restore lifecycle works with auth", async ()
   assert.equal(restoredOverrides.response.status, 200);
   assert.equal(restoredOverrides.body.overrides[artifactId].title, overridePayload.title);
 });
+
+test("cms input guards clamp long fields and drop unsafe urls", async () => {
+  const artifactId = "artifact-guards";
+  const long = "x".repeat(2000);
+
+  const overridePayload = {
+    title: `Title ${long}`,
+    hook: `Hook ${long}`,
+    keywords: ["okay", "y".repeat(200), "also-ok"],
+    story: {
+      title: `Story ${long}`,
+      summary: `Summary ${long}`,
+      body: ["Paragraph 1", long, "Paragraph 3"],
+      references: [
+        { label: "Safe", url: "https://example.com/reference" },
+        { label: "Nope JS", url: "javascript:alert(1)" },
+        { label: "Nope FTP", url: "ftp://example.com/file" },
+        { label: "", url: "https://example.com/empty-label" }
+      ]
+    },
+    hotspots: [
+      {
+        id: "hotspot-1",
+        label: `Label ${long}`,
+        title: `Hotspot ${long}`,
+        body: `Body ${long}`,
+        reference: "javascript:alert(1)"
+      }
+    ]
+  };
+
+  const createSubmission = await requestJson(`/api/cms/overrides/${artifactId}`, {
+    method: "PUT",
+    body: overridePayload
+  });
+  assert.equal(createSubmission.response.status, 200);
+  assert.equal(createSubmission.body.ok, true);
+  const submissionId = createSubmission.body.submission.id;
+  assert.ok(submissionId);
+
+  const approved = await requestJson(`/api/cms/submissions/${submissionId}/approve`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${ADMIN_TOKEN}`
+    },
+    body: { reason: `ok ${long}` }
+  });
+  assert.equal(approved.response.status, 200);
+  assert.equal(approved.body.ok, true);
+
+  const liveOverrides = await requestJson("/api/cms/overrides");
+  assert.equal(liveOverrides.response.status, 200);
+  const stored = liveOverrides.body.overrides[artifactId];
+  assert.ok(stored);
+  assert.ok(typeof stored.title === "string" && stored.title.length <= 120);
+  assert.ok(typeof stored.hook === "string" && stored.hook.length <= 260);
+  assert.ok(typeof stored.story.title === "string" && stored.story.title.length <= 140);
+  assert.ok(typeof stored.story.summary === "string" && stored.story.summary.length <= 520);
+  assert.ok(Array.isArray(stored.story.body));
+  assert.ok(stored.story.body.every((entry) => typeof entry === "string" && entry.length <= 1400));
+
+  assert.ok(Array.isArray(stored.story.references));
+  assert.equal(stored.story.references.length, 1);
+  assert.equal(stored.story.references[0].url, "https://example.com/reference");
+
+  assert.ok(Array.isArray(stored.hotspots));
+  assert.equal(stored.hotspots[0].reference, undefined);
+
+  assert.ok(typeof approved.body.submission.reason === "string" && approved.body.submission.reason.length <= 320);
+});
