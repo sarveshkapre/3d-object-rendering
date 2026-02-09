@@ -7,6 +7,7 @@ import { CMS_LIMITS, sanitizeOverridePayload, sanitizeReferenceUrl } from "../sh
 const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
 const SESSION_METRICS_STORAGE_KEY = "artifact_viewer_metrics";
 const COMPARE_PREFS_STORAGE_KEY = "artifact_viewer_compare_prefs_v1";
+const LOW_LOAD_PREFS_STORAGE_KEY = "artifact_viewer_low_load_v1";
 const TOUR_AUTOPLAY_DELAY_MS = 4600;
 const VISUAL_PRESETS = ["white", "sand", "sky"];
 const VISUAL_PRESET_LABELS = {
@@ -29,6 +30,36 @@ const INSIGHTS_METRIC_DEFINITIONS = [
 ];
 let lastIdlePointerMoveTs = 0;
 let serverMetricsPollTimer = null;
+
+function loadLowLoadPreference() {
+  try {
+    if (typeof localStorage === "undefined") {
+      return false;
+    }
+    const raw = localStorage.getItem(LOW_LOAD_PREFS_STORAGE_KEY);
+    if (!raw) {
+      return false;
+    }
+    return raw === "1" || raw === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
+function setPreferredLowLoadMode(enabled) {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    if (enabled) {
+      localStorage.setItem(LOW_LOAD_PREFS_STORAGE_KEY, "1");
+      return;
+    }
+    localStorage.removeItem(LOW_LOAD_PREFS_STORAGE_KEY);
+  } catch (error) {
+    // Ignore storage write failures (Safari private mode, quota).
+  }
+}
 
 function detectShortcutPlatform() {
   if (typeof navigator === "undefined") {
@@ -112,6 +143,7 @@ const elements = {
   compareBtn: document.getElementById("compareBtn"),
   syncBtn: document.getElementById("syncBtn"),
   presetBtn: document.getElementById("presetBtn"),
+  lowLoadBtn: document.getElementById("lowLoadBtn"),
   showcaseBtn: document.getElementById("showcaseBtn"),
   curatorBtn: document.getElementById("curatorBtn"),
   moderationBtn: document.getElementById("moderationBtn"),
@@ -163,6 +195,7 @@ const idleResetTimeoutMs = parsedUrlState.idleResetMs ?? DEFAULT_IDLE_RESET_MS;
 const baseArtifactsById = Object.fromEntries(artifacts.map((artifact) => [artifact.id, structuredClone(artifact)]));
 const artifactSearchIndex = new Map();
 const comparePreferences = loadComparePreferences();
+const lowLoadPreference = loadLowLoadPreference();
 
 const state = {
   currentCategory: "all",
@@ -188,7 +221,7 @@ const state = {
   toastTimer: null,
   pendingState: parsedUrlState,
   cameraSyncLock: false,
-  lowLoadMode: false,
+  lowLoadMode: lowLoadPreference,
   primaryLoading: false,
   compareLoading: false,
   primaryLoadError: "",
@@ -585,6 +618,11 @@ function bindEvents() {
     cycleVisualPreset("ui");
   });
 
+  elements.lowLoadBtn.addEventListener("click", () => {
+    haltShowcaseForManualInteraction("low_load_toggle");
+    setLowLoadMode(!state.lowLoadMode, { source: "ui" });
+  });
+
   elements.showcaseBtn.addEventListener("click", () => {
     setShowcaseActive(!state.showcaseActive, { source: "ui" });
   });
@@ -924,8 +962,10 @@ function setLowLoadMode(enabled, options = {}) {
   }
 
   state.lowLoadMode = next;
+  setPreferredLowLoadMode(state.lowLoadMode);
   primaryViewer.setLowLoadMode(state.lowLoadMode);
   compareViewer.setLowLoadMode(state.lowLoadMode);
+  updateHeaderControls();
 
   if (!options.skipToast) {
     showToast(state.lowLoadMode ? "Low load mode on" : "Low load mode off");
@@ -3324,6 +3364,8 @@ function updateHeaderControls() {
   elements.syncBtn.hidden = !state.compareEnabled;
   elements.syncBtn.textContent = state.compareSync ? "Sync On" : "Sync Off";
   elements.presetBtn.textContent = `Preset: ${VISUAL_PRESET_LABELS[state.visualPreset] ?? state.visualPreset}`;
+  elements.lowLoadBtn.textContent = state.lowLoadMode ? "Low Load On" : "Low Load Off";
+  elements.lowLoadBtn.classList.toggle("is-active", state.lowLoadMode);
   elements.showcaseBtn.textContent = state.showcaseActive ? "Showcase On" : "Showcase Off";
   elements.showcaseBtn.classList.toggle("is-active", state.showcaseActive);
   updateTourAutoplayUI();
@@ -3585,6 +3627,14 @@ function handleKeydown(event) {
     event.preventDefault();
     cycleVisualPreset("keyboard");
     trackEvent("keyboard_shortcut_used", { key: "p", action: "cycle_visual_preset" });
+    return;
+  }
+
+  if (key === "l") {
+    event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_l");
+    setLowLoadMode(!state.lowLoadMode, { source: "keyboard" });
+    trackEvent("keyboard_shortcut_used", { key: "l", action: "toggle_low_load" });
     return;
   }
 

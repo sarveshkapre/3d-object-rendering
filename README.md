@@ -9,6 +9,7 @@ Minimalist white-space 3D artifact experience with:
 - Kiosk-ready showcase mode that auto-plays tours and rotates artifacts
 - Optional idle reset (append `?idle=120`) that snaps back to the featured artifact/preset after inactivity
 - Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
+- Low load mode toggle (reduced device pixel ratio + shadows off) for kiosk stability on constrained hardware
 - Side-by-side compare mode with synchronized camera control
 - Compare mode remembers your last partner per artifact plus your sync toggle preference so kiosk docents can reopen it without reconfiguring pairings
 - Artifact search across names, categories, tags, and story metadata

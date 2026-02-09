@@ -7,7 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `viewer-low-load-toggle` (P1): Add a persistent "Low load" toggle in the top toolbar (plus `L` keyboard shortcut) so kiosk operators can explicitly trade fidelity for stability without waiting for a failed load.
 - [ ] `viewer-snapshot` (P2): Add a "Snapshot" action that downloads a PNG of the active canvas (and, in compare mode, supports capturing both panes) for exhibit reports and docent training materials.
 - [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode + sync, and tour controls in one run (`npm run smoke:kiosk`).
 - [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
@@ -19,6 +18,7 @@
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
 
 ## Implemented
+- 2026-02-09 · `viewer-low-load-toggle`: Added a persistent toolbar toggle + `L` keyboard shortcut for low-load mode (reduced DPR + shadows off), persisted the preference via local storage, and documented the capability. Evidence: `index.html`, `src/main.js`, `README.md`, `npm test`, `npm run build`.
 - 2026-02-09 · `curator-client-validation`: Added Curator Editor client-side counters + validity indicators (length/range/URL protocol), and sanitized curator payloads using shared CMS rules so submissions match server behavior before moderation. Evidence: `shared/cms.js`, `src/main.js`, `src/style.css`, `server/index.js`, `npm test`, `npm run build`.
 - 2026-02-09 · `viewer-load-retry`: Added retry controls directly in the loading overlays and introduced a "Low load" render mode (reduced DPR + shadows off) to recover from flaky loads on kiosk hardware. Evidence: `index.html`, `src/main.js`, `src/style.css`, `src/viewer.js`, `npm run build`.
 - 2026-02-09 · `asset-bundling-health`: Added `npm run assets:check` and wired it into `npm run build` so missing `public/models/*.glb` files fail fast in local and CI builds. Evidence: `scripts/check-assets.mjs`, `package.json`, `README.md`, `npm run assets:check`, `npm run build`.
