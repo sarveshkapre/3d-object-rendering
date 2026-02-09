@@ -7,9 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `cms-input-guards` (P1, selected): Enforce URL/protocol allowlists and max field lengths on CMS payloads (submissions + moderation reasons) so curator tooling cannot store unsafe links or runaway text blobs.
-- [ ] `insights-sparkline-history` (P1, selected): Keep the last N server poll snapshots and render tiny per-metric sparklines so trend direction is visible even when deltas net to zero.
-- [ ] `ci-github-actions` (P1, selected): Add a minimal GitHub Actions workflow that runs `npm test` + `npm run build` on pushes/PRs for production readiness.
 - [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
 - [ ] `curator-client-validation` (P2): Mirror server-side CMS validation rules in the Curator form (length counters, URL validation, keyword limits) so curators get fast feedback before submitting.
 - [ ] `insights-export` (P3): Add a one-click "Copy metrics" action in the insights panel for docents to paste session summaries into reports.
@@ -19,6 +16,9 @@
 - [ ] `analytics-retention-policy` (P3): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 
 ## Implemented
+- 2026-02-09 · `ci-github-actions`: Added a minimal GitHub Actions workflow that runs `npm test` + `npm run build` on pushes/PRs so the repo stays production-ready. Evidence: `.github/workflows/ci.yml`, GitHub Actions run `21815851401`.
+- 2026-02-09 · `insights-sparkline-history`: Captured a rolling history of server poll snapshots and rendered per-metric sparklines in the insights panel so trend direction is visible at a glance. Evidence: `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
+- 2026-02-09 · `cms-input-guards`: Enforced URL/protocol allowlists plus max field lengths on CMS overrides and moderation reasons, dropping unsafe `javascript:` links and clamping runaway payloads. Evidence: `server/index.js`, `server/index.test.js`, `npm test`, `npm run smoke:api`.
 - 2026-02-08 · `store-concurrency-guard`: Replaced per-request file loading with an in-memory store plus serialized mutation queue, and fixed data directory creation to respect custom `API_STORE_PATH` values. Evidence: `server/index.js`, `npm test`, `npm run smoke:api`.
 - 2026-02-08 · `server-regression-tests`: Added Node integration coverage for parallel analytics ingest and CMS approve/delete/restore flows (including auth checks) by launching the real API process. Evidence: `server/index.test.js`, `package.json`, `npm test`.
 - 2026-02-08 · `insights-trend-deltas`: Added per-metric delta badges in the insights panel and snapshot diffing logic so kiosk staff can see change since the previous poll. Evidence: `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
@@ -49,6 +49,7 @@
 - Concurrent API writes are common when kiosks run for long sessions; serializing store mutations and proving it with parallel-ingest tests prevents subtle data loss that would otherwise invalidate popularity and moderation analytics.
 - Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
+- CMS links are user-controlled input: server-side URL allowlisting prevents the story/reference UI from ever persisting `javascript:` links into stored overrides.
 - Market scan (untrusted): Modern web viewers often ship annotations/hotspots + guided tours, plus optional AR entry points (e.g. `<model-viewer>`, Sketchfab, and Smithsonian Voyager). Sources: https://modelviewer.dev , https://sketchfab.com/features/annotations , https://3d.si.edu/voyager
 
 ## Notes
