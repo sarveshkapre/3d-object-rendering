@@ -114,6 +114,74 @@ export class ArtifactViewer {
     this._animate();
   }
 
+  captureSnapshotCanvas(options = {}) {
+    const maxEdge = Number.isFinite(options.maxEdge) ? options.maxEdge : 2400;
+    const size = new THREE.Vector2();
+    this.renderer.getDrawingBufferSize(size);
+    const width = Math.max(0, Math.floor(size.x));
+    const height = Math.max(0, Math.floor(size.y));
+
+    if (width <= 0 || height <= 0) {
+      throw new Error("snapshot_unavailable");
+    }
+
+    const renderTarget = new THREE.WebGLRenderTarget(width, height);
+    renderTarget.texture.colorSpace = THREE.SRGBColorSpace;
+
+    const previousTarget = this.renderer.getRenderTarget();
+    const pixels = new Uint8Array(width * height * 4);
+
+    try {
+      this.renderer.setRenderTarget(renderTarget);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, pixels);
+    } finally {
+      this.renderer.setRenderTarget(previousTarget);
+      renderTarget.dispose();
+    }
+
+    // WebGL's origin is bottom-left; 2D canvas expects top-left.
+    const flipped = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      const srcStart = (height - 1 - y) * width * 4;
+      const dstStart = y * width * 4;
+      flipped.set(pixels.subarray(srcStart, srcStart + width * 4), dstStart);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("snapshot_ctx_unavailable");
+    }
+
+    ctx.putImageData(new ImageData(flipped, width, height), 0, 0);
+
+    if (!Number.isFinite(maxEdge) || maxEdge <= 0 || Math.max(width, height) <= maxEdge) {
+      return canvas;
+    }
+
+    const scale = maxEdge / Math.max(width, height);
+    const outWidth = Math.max(1, Math.round(width * scale));
+    const outHeight = Math.max(1, Math.round(height * scale));
+
+    const output = document.createElement("canvas");
+    output.width = outWidth;
+    output.height = outHeight;
+
+    const outCtx = output.getContext("2d");
+    if (!outCtx) {
+      return canvas;
+    }
+
+    outCtx.imageSmoothingEnabled = true;
+    outCtx.imageSmoothingQuality = "high";
+    outCtx.drawImage(canvas, 0, 0, outWidth, outHeight);
+    return output;
+  }
+
   _getTargetPixelRatio() {
     const cap = Number.isFinite(this.pixelRatioCap) ? this.pixelRatioCap : 2;
     return Math.min(window.devicePixelRatio || 1, cap);

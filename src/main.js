@@ -184,6 +184,7 @@ const elements = {
   shortcutsModal: document.getElementById("shortcutsModal"),
   shortcutsCloseBtn: document.getElementById("shortcutsCloseBtn"),
   fullscreenBtn: document.getElementById("fullscreenBtn"),
+  snapshotBtn: document.getElementById("snapshotBtn"),
   shareBtn: document.getElementById("shareBtn"),
   listToggleBtn: document.getElementById("listToggleBtn"),
   storyToggleBtn: document.getElementById("storyToggleBtn"),
@@ -856,6 +857,10 @@ function bindEvents() {
 
   document.addEventListener("fullscreenchange", () => {
     elements.fullscreenBtn.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Fullscreen";
+  });
+
+  elements.snapshotBtn.addEventListener("click", () => {
+    void captureSnapshot({ source: "ui" });
   });
 
   elements.shareBtn.addEventListener("click", () => {
@@ -3645,6 +3650,14 @@ function handleKeydown(event) {
     return;
   }
 
+  if (key === "x") {
+    event.preventDefault();
+    haltShowcaseForManualInteraction("keyboard_x");
+    void captureSnapshot({ source: "keyboard" });
+    trackEvent("keyboard_shortcut_used", { key: "x", action: "download_snapshot" });
+    return;
+  }
+
   if (event.key === "ArrowRight" && state.tourActive) {
     event.preventDefault();
     haltShowcaseForManualInteraction("keyboard_arrow_right");
@@ -4013,6 +4026,124 @@ async function shareCurrentView(options = {}) {
     showToast("Clipboard unavailable. URL updated in address bar.");
     if (options.restoreUrl === true) {
       window.history.replaceState({}, "", urlBeforeShare);
+    }
+  }
+}
+
+function formatSnapshotTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(
+    date.getMinutes()
+  )}${pad(date.getSeconds())}`;
+}
+
+function sanitizeFilename(value) {
+  const base = String(value || "snapshot").trim();
+  const cleaned = base
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned || "snapshot";
+}
+
+function canvasToBlob(canvas, mimeType = "image/png") {
+  return new Promise((resolve, reject) => {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      reject(new Error("snapshot_canvas_invalid"));
+      return;
+    }
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("snapshot_blob_unavailable"));
+        return;
+      }
+      resolve(blob);
+    }, mimeType);
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noreferrer";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+async function captureSnapshot(options = {}) {
+  if (!state.currentArtifactId) {
+    showToast("Snapshot unavailable");
+    return;
+  }
+
+  const snapshotButton = elements.snapshotBtn;
+  const previousLabel = snapshotButton?.textContent ?? "Snapshot";
+  if (snapshotButton) {
+    snapshotButton.disabled = true;
+    snapshotButton.textContent = "Snapshotting...";
+  }
+
+  try {
+    const includeCompare = Boolean(state.compareEnabled && state.compareReady && state.compareArtifactId);
+    const primaryCanvas = primaryViewer.captureSnapshotCanvas({ maxEdge: 2400 });
+
+    let outputCanvas = primaryCanvas;
+    if (includeCompare) {
+      const compareCanvas = compareViewer.captureSnapshotCanvas({ maxEdge: 2400 });
+      const combined = document.createElement("canvas");
+      combined.width = primaryCanvas.width + compareCanvas.width;
+      combined.height = Math.max(primaryCanvas.height, compareCanvas.height);
+      const ctx = combined.getContext("2d");
+      if (!ctx) {
+        throw new Error("snapshot_ctx_unavailable");
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, combined.width, combined.height);
+
+      const leftOffsetY = Math.round((combined.height - primaryCanvas.height) / 2);
+      const rightOffsetY = Math.round((combined.height - compareCanvas.height) / 2);
+      ctx.drawImage(primaryCanvas, 0, leftOffsetY);
+      ctx.drawImage(compareCanvas, primaryCanvas.width, rightOffsetY);
+      outputCanvas = combined;
+    }
+
+    const blob = await canvasToBlob(outputCanvas);
+    const primaryTitle = artifactMap.get(state.currentArtifactId)?.title ?? state.currentArtifactId;
+    const compareTitle = includeCompare && state.compareArtifactId ? artifactMap.get(state.compareArtifactId)?.title ?? state.compareArtifactId : null;
+    const filenameParts = [sanitizeFilename(primaryTitle)];
+    if (compareTitle) {
+      filenameParts.push("vs", sanitizeFilename(compareTitle));
+    }
+    filenameParts.push(formatSnapshotTimestamp());
+    const filename = `${filenameParts.join("-")}.png`;
+
+    downloadBlob(blob, filename);
+    showToast("Snapshot downloaded");
+    trackEvent("viewer_snapshot_captured", {
+      artifactId: state.currentArtifactId,
+      compareEnabled: includeCompare,
+      compareArtifactId: includeCompare ? state.compareArtifactId : null,
+      lowLoadMode: state.lowLoadMode,
+      source: options.source ?? "unknown"
+    });
+  } catch (error) {
+    showToast("Snapshot failed");
+    trackEvent("viewer_snapshot_failed", {
+      artifactId: state.currentArtifactId,
+      reason: String(error && error.message ? error.message : "unknown"),
+      source: options.source ?? "unknown"
+    });
+  } finally {
+    if (snapshotButton) {
+      snapshotButton.disabled = false;
+      snapshotButton.textContent = previousLabel;
     }
   }
 }

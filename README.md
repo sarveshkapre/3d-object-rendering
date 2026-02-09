@@ -130,6 +130,8 @@ Client events are captured in batches for: artifact views, load success/failure,
 
 Compare pairings emit `compare_pair_recorded` events that track how often an artifact is used as the primary anchor in compare mode and which secondary artifacts get paired the most. These fuel the compare session counter and the new top compare partners list surfaced inside the insights panel.
 
+Snapshot capture (`Snapshot` button or `X`) downloads a PNG of the current viewer state (single pane or side-by-side compare) for docent notes and exhibit reporting.
+
 Optional environment variables:
 
 ```bash
