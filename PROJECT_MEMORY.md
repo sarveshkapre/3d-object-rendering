@@ -19,20 +19,25 @@
 - 2026-02-09 | Add loading overlay retry + low-load render mode | Prevent kiosk sessions from getting stranded after transient model load failures | `npm run build`, CI `21823901570` | d2975c7 | high | trusted
 - 2026-02-09 | Add `assets:check` and run it as part of `npm run build` | Fail fast if deployments ship without the referenced GLBs | `npm run assets:check`, `npm run build`, CI `21823929667` | 402b120 | high | trusted
 - 2026-02-09 | Add "Copy metrics" export from insights panel | Give docents a one-click reporting path without screenshots | `npm run build`, CI `21823978445` | 9f9dff7 | medium | trusted
+- 2026-02-09 | Add persistent low-load toggle + keyboard shortcut | Let operators explicitly trade fidelity for stability without waiting for load failures | `npm test`, `npm run build` | 89f6630 | high | trusted
+- 2026-02-09 | Add snapshot capture export | Enable a reliable PNG capture path for docent reporting (single and compare modes) | `npm test`, `npm run build` | 4f5c50b | high | trusted
+- 2026-02-09 | Add kiosk browser smoke script | Catch regressions across core kiosk flows with a runnable, end-to-end browser script | `npm run smoke:kiosk` | 83404b6 | medium | trusted
+- 2026-02-09 | Fall back gracefully when WebGL is unavailable | Prevent total app failure on constrained/locked-down devices; keep narrative UX usable and make smoke automation reliable | `npm run smoke:kiosk`, `npm run build` | 3735822 | high | trusted
 
 ## Mistakes And Fixes
 - Template: YYYY-MM-DD | Issue | Root cause | Fix | Prevention rule | Commit | Confidence
+- 2026-02-09 | `hidden` overlays intercepted clicks in some browsers | `.shortcuts-modal { display: grid; }` overrode the UA `[hidden] { display: none; }` rule due to higher specificity | Add explicit `[hidden] { display: none !important; }` in app CSS | Always define an explicit `[hidden]` rule when using `hidden` for stateful overlays; cover with a browser smoke check | 3735822 | high
 
 ## Known Risks
-- Low-load mode is currently activated via the retry overlay; there is no persistent UI toggle to return to high-quality rendering in-session.
+- WebGL fallback mode positions hotspot dots heuristically (no camera projection) and exports placeholder snapshot imagery; consider surfacing a clearer UI badge and/or a dedicated "renderer unavailable" panel if this shows up in real deployments.
 
 ## Next Prioritized Tasks
 - 2026-02-09 scoring (1-5; higher is better except risk where lower is better):
-  - `playwright-kiosk-smoke`: impact 5, effort 3, strategic fit 5, differentiation 2, risk 2, confidence 3
   - `accessibility-audit`: impact 4, effort 3, strategic fit 5, differentiation 3, risk 2, confidence 3
-  - `viewer-snapshot`: impact 3, effort 2, strategic fit 4, differentiation 2, risk 1, confidence 3
-  - `ar-entrypoint`: impact 3, effort 3, strategic fit 3, differentiation 3, risk 2, confidence 2
-  - `analytics-retention-policy`: impact 3, effort 2, strategic fit 4, differentiation 1, risk 2, confidence 3
+  - `analytics-retention-policy`: impact 4, effort 2, strategic fit 4, differentiation 1, risk 2, confidence 3
+  - `preview-full-stack`: impact 3, effort 2, strategic fit 4, differentiation 1, risk 1, confidence 3
+  - `artifact-data-validate`: impact 3, effort 2, strategic fit 4, differentiation 1, risk 1, confidence 3
+  - `model-diagnostics`: impact 3, effort 3, strategic fit 3, differentiation 2, risk 2, confidence 2
 
 ## Verification Evidence
 - Template: YYYY-MM-DD | Command | Key output | Status (pass/fail)
@@ -43,6 +48,7 @@
 - 2026-02-09 | GitHub Actions workflow `ci` | run `21815851401` passed | pass
 - 2026-02-09 | `npm run assets:check` | `assets:check ok (3 referenced models)` | pass
 - 2026-02-09 | GitHub Actions workflow `ci` | runs `21823772145`, `21823901570`, `21823929667`, `21823978445` passed | pass
+- 2026-02-09 | `KEEP_SMOKE_ARTIFACTS=1 npm run smoke:kiosk` | `smoke:kiosk ok` | pass
 
 ## Historical Summary
 - Keep compact summaries of older entries here when file compaction runs.
