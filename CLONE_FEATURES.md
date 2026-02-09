@@ -7,10 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `webgl-context-loss-recovery` (P1): Detect WebGL context loss and show a recovery overlay (reload / optional low-load + reload) so kiosks do not silently freeze mid-session.
-- [ ] `preview-full-stack` (P1): Add `npm run preview:full` to serve `dist/` and proxy `/api/*` to the local API so maintainers can validate production builds without relying on Vite dev proxying.
-- [ ] `artifact-data-validate` (P1): Add catalog validation in `npm test` (unique ids, valid categories, hotspot/tour consistency) to prevent runtime surprises.
-- [ ] `analytics-retention-policy` (P1): Make JSON store retention configurable (caps + optional raw event storage disable) so long-running kiosks remain stable.
 - [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
 - [ ] `smoke-preview-full-stack` (P2): Add a quick smoke path that boots `preview:full` and validates both `/` and `/api/health` respond (future CI optional).
 - [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
@@ -19,6 +15,10 @@
 - [ ] `viewer-error-telemetry` (P3): Capture and surface viewer load/render errors in the insights panel so kiosks expose failures without opening devtools.
 
 ## Implemented
+- 2026-02-09 · `webgl-context-loss-recovery`: Detects WebGL context loss on both canvases, stops rendering, and shows a recovery overlay with reload options so kiosk sessions do not freeze silently. Evidence: `index.html`, `src/main.js`, `src/viewer.js`, `src/style.css`, `npm run smoke:kiosk`, `npm run build`.
+- 2026-02-09 · `preview-full-stack`: Added `npm run preview:full` to serve `dist/` and proxy `/api/*` to the local API so maintainers can validate production builds without relying on Vite dev proxying. Evidence: `scripts/preview-full-stack.mjs`, `package.json`, `README.md`.
+- 2026-02-09 · `artifact-data-validate`: Added catalog validation to `npm test` (unique ids, valid categories, hotspot/tour consistency) to prevent runtime surprises. Evidence: `src/data/artifacts.test.js`, `npm test`.
+- 2026-02-09 · `analytics-retention-policy`: Made JSON store retention configurable (caps + optional raw event storage disable) so long-running kiosks remain stable. Evidence: `server/index.js`, `server/retention.test.js`, `README.md`, `npm test`, `npm run smoke:api`.
 - 2026-02-09 · `playwright-kiosk-smoke`: Added `npm run smoke:kiosk` Playwright-driven kiosk smoke that boots API + Vite on random ports, exercises key UI flows, and verifies snapshot downloads. Evidence: `scripts/smoke-kiosk.mjs`, `package.json`, `vite.config.js`, `README.md`, `npm run smoke:kiosk`.
 - 2026-02-09 · `viewer-webgl-fallback`: Kept the app usable when WebGL renderer creation fails by falling back to a UI-first mode (gallery, hotspots, tours, compare, snapshots still function), and exposed WebGL availability via `documentElement.dataset.webgl`. Evidence: `src/viewer.js`, `src/main.js`, `npm run smoke:kiosk`, `npm run build`.
 - 2026-02-09 · `viewer-snapshot`: Added snapshot capture (`Snapshot` button or `X`) that downloads a PNG from the current render; compare mode exports a combined side-by-side image. Evidence: `index.html`, `src/main.js`, `src/viewer.js`, `README.md`, `npm test`, `npm run build`.
@@ -61,6 +61,7 @@
 - Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
 - CMS links are user-controlled input: server-side URL allowlisting prevents the story/reference UI from ever persisting `javascript:` links into stored overrides.
+- Running `vite preview` alone cannot proxy `/api`; a combined preview server that serves `dist/` while proxying to the local API makes production-build verification a one-command workflow.
 - Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, shareable camera state, guided tours, environment/lighting controls, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://3d.si.edu/voyager-story-standalone , https://developer.chrome.com/blog/model-viewer-ar , https://doc.babylonjs.com/toolsAndResources/sandbox/ , https://sketchfab.com/developers/viewer
 - Market scan addendum (untrusted, 2026-02-09): WebGL context loss is a first-class failure mode that should be handled explicitly for kiosk stability; browser guidance recommends listening for `webglcontextlost` / `webglcontextrestored` and prompting for recovery. Sources: https://www.khronos.org/webgl/wiki/HandlingContextLost , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextlost_event , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextrestored_event
 
