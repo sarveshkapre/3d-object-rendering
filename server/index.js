@@ -9,6 +9,52 @@ const port = Number(process.env.API_PORT || 8787);
 const adminToken = process.env.ADMIN_TOKEN || "";
 const storePath = process.env.API_STORE_PATH || resolve(__dirname, "data/store.local.json");
 
+function normalizeBooleanEnv(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function normalizeIntEnv(value, fallback, options = {}) {
+  const min = Number.isFinite(options.min) ? options.min : 0;
+  const max = Number.isFinite(options.max) ? options.max : Number.POSITIVE_INFINITY;
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function normalizeDaysEnv(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const parsed = Number(String(value));
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, parsed);
+}
+
+const ANALYTICS_STORE_EVENTS = normalizeBooleanEnv(process.env.API_ANALYTICS_STORE_EVENTS, true);
+const ANALYTICS_EVENTS_MAX = normalizeIntEnv(process.env.API_ANALYTICS_EVENTS_MAX, 3000, { min: 0, max: 50000 });
+const ANALYTICS_EVENT_RETENTION_DAYS = normalizeDaysEnv(process.env.API_ANALYTICS_EVENT_RETENTION_DAYS, 0);
+const CMS_SUBMISSIONS_MAX = normalizeIntEnv(process.env.API_CMS_SUBMISSIONS_MAX, 3000, { min: 0, max: 20000 });
+const CMS_SUBMISSIONS_RETENTION_DAYS = normalizeDaysEnv(process.env.API_CMS_SUBMISSIONS_RETENTION_DAYS, 0);
+const CMS_REVISIONS_MAX = normalizeIntEnv(process.env.API_CMS_REVISIONS_MAX, 300, { min: 0, max: 5000 });
+const CMS_REVISIONS_RETENTION_DAYS = normalizeDaysEnv(process.env.API_CMS_REVISIONS_RETENTION_DAYS, 0);
+
 const BASE_STORE = {
   overrides: {},
   submissions: [],
@@ -156,6 +202,33 @@ function normalizeStore(parsed) {
   };
 }
 
+function applyStoreRetentionPolicies(store) {
+  if (!store || typeof store !== "object") {
+    return;
+  }
+
+  store.analytics.events = applyRetention(store.analytics.events, {
+    maxItems: ANALYTICS_STORE_EVENTS ? ANALYTICS_EVENTS_MAX : 0,
+    retentionDays: ANALYTICS_EVENT_RETENTION_DAYS,
+    timeGetter: (item) => item?.receivedAt ?? item?.at ?? null
+  });
+
+  store.submissions = applyRetention(store.submissions, {
+    maxItems: CMS_SUBMISSIONS_MAX,
+    retentionDays: CMS_SUBMISSIONS_RETENTION_DAYS,
+    timeGetter: (item) => item?.createdAt ?? null
+  });
+
+  for (const [artifactId, revisions] of Object.entries(store.revisions ?? {})) {
+    store.revisions[artifactId] = applyRetention(revisions, {
+      maxItems: CMS_REVISIONS_MAX,
+      retentionDays: CMS_REVISIONS_RETENTION_DAYS,
+      timeGetter: (item) => item?.createdAt ?? null,
+      direction: "head"
+    });
+  }
+}
+
 async function loadStore() {
   if (storeCache) {
     return storeCache;
@@ -172,6 +245,7 @@ async function loadStore() {
       const raw = await readFile(storePath, "utf-8");
       const parsed = JSON.parse(raw);
       storeCache = normalizeStore(parsed);
+      applyStoreRetentionPolicies(storeCache);
     } catch {
       storeCache = structuredClone(BASE_STORE);
       await writeFile(storePath, JSON.stringify(storeCache, null, 2));
@@ -280,9 +354,49 @@ function applyAnalyticsEvent(store, event) {
   store.analytics.artifacts[artifactId] = existing;
 }
 
+function applyRetention(items, options = {}) {
+  const maxItems = Number.isFinite(options.maxItems) ? Math.max(0, options.maxItems) : Number.POSITIVE_INFINITY;
+  const retentionDays = Number.isFinite(options.retentionDays) ? Math.max(0, options.retentionDays) : 0;
+  const timeGetter = typeof options.timeGetter === "function" ? options.timeGetter : () => null;
+  const direction = options.direction === "head" ? "head" : "tail";
+
+  let next = Array.isArray(items) ? items : [];
+
+  if (retentionDays > 0) {
+    const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    next = next.filter((item) => {
+      const timeValue = timeGetter(item);
+      if (!timeValue) {
+        return true;
+      }
+      const ts = new Date(timeValue).getTime();
+      if (!Number.isFinite(ts)) {
+        return true;
+      }
+      return ts >= cutoff;
+    });
+  }
+
+  if (maxItems === 0) {
+    return [];
+  }
+
+  if (Number.isFinite(maxItems) && next.length > maxItems) {
+    return direction === "head" ? next.slice(0, maxItems) : next.slice(-maxItems);
+  }
+
+  return next;
+}
+
 function appendRevision(store, artifactId, revision) {
   const current = Array.isArray(store.revisions[artifactId]) ? store.revisions[artifactId] : [];
-  store.revisions[artifactId] = [revision, ...current].slice(0, 300);
+  const next = applyRetention([revision, ...current], {
+    maxItems: CMS_REVISIONS_MAX,
+    retentionDays: CMS_REVISIONS_RETENTION_DAYS,
+    timeGetter: (item) => item?.createdAt ?? null,
+    direction: "head"
+  });
+  store.revisions[artifactId] = next;
 }
 
 function createSubmission({ artifactId, operation, override }) {
@@ -392,16 +506,20 @@ const server = createServer(async (req, res) => {
             applyAnalyticsEvent(store, event);
           }
 
-          store.analytics.events.push(
-            ...normalizedEvents.map((event) => ({
-              ...event,
-              receivedAt: new Date().toISOString()
-            }))
-          );
-
-          if (store.analytics.events.length > 3000) {
-            store.analytics.events = store.analytics.events.slice(-3000);
+          if (ANALYTICS_STORE_EVENTS && ANALYTICS_EVENTS_MAX !== 0) {
+            store.analytics.events.push(
+              ...normalizedEvents.map((event) => ({
+                ...event,
+                receivedAt: new Date().toISOString()
+              }))
+            );
           }
+
+          store.analytics.events = applyRetention(store.analytics.events, {
+            maxItems: ANALYTICS_STORE_EVENTS ? ANALYTICS_EVENTS_MAX : 0,
+            retentionDays: ANALYTICS_EVENT_RETENTION_DAYS,
+            timeGetter: (item) => item?.receivedAt ?? item?.at ?? null
+          });
         });
       }
 
@@ -483,9 +601,11 @@ const server = createServer(async (req, res) => {
         });
 
         store.submissions.push(nextSubmission);
-        if (store.submissions.length > 3000) {
-          store.submissions = store.submissions.slice(-3000);
-        }
+        store.submissions = applyRetention(store.submissions, {
+          maxItems: CMS_SUBMISSIONS_MAX,
+          retentionDays: CMS_SUBMISSIONS_RETENTION_DAYS,
+          timeGetter: (item) => item?.createdAt ?? null
+        });
 
         return nextSubmission;
       });
@@ -521,9 +641,11 @@ const server = createServer(async (req, res) => {
 
     await queueStoreMutation((store) => {
       store.submissions.push(submission);
-      if (store.submissions.length > 3000) {
-        store.submissions = store.submissions.slice(-3000);
-      }
+      store.submissions = applyRetention(store.submissions, {
+        maxItems: CMS_SUBMISSIONS_MAX,
+        retentionDays: CMS_SUBMISSIONS_RETENTION_DAYS,
+        timeGetter: (item) => item?.createdAt ?? null
+      });
     });
 
     json(res, 200, {
