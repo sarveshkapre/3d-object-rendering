@@ -23,6 +23,7 @@ Minimalist white-space 3D artifact experience with:
 - Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
 - Live session insights panel (views, hotspot engagement, compare sessions, compare partner leaderboard, tour usage, shares) with auto-refreshing server metrics
 - Insights delta badges that show metric movement since the previous server poll
+- Insights sparkline mini-charts that show the last N server polls per metric for quick trend reading
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)
 - In-app Curator Editor (`Curator` button) for title/hook/story/hotspots overrides
 - Open anonymous moderation queue (`Moderation` button) with approve/reject/restore

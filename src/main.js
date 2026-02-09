@@ -16,6 +16,7 @@ const VISUAL_PRESET_LABELS = {
 const MIN_IDLE_RESET_MS = 10000;
 const DEFAULT_IDLE_RESET_MS = 0;
 const SERVER_METRICS_REFRESH_INTERVAL_MS = 30000;
+const SERVER_METRICS_HISTORY_LIMIT = 24;
 const INSIGHTS_METRIC_DEFINITIONS = [
   { key: "views", label: "Views" },
   { key: "hotspotOpens", label: "Hotspot Opens" },
@@ -196,6 +197,7 @@ const state = {
   serverMetrics: {},
   serverMetricDeltas: {},
   lastServerMetricsSnapshot: null,
+  serverMetricsHistory: [],
   recentUpdates: [],
   cmsOverrides: {},
   curatorOpen: false,
@@ -925,7 +927,9 @@ async function refreshServerMetrics(options = {}) {
     const nextMetrics = payload.artifacts ?? {};
     const previousSnapshot = state.lastServerMetricsSnapshot;
     state.serverMetricDeltas = previousSnapshot ? computeServerMetricDeltas(previousSnapshot, nextMetrics) : {};
-    state.lastServerMetricsSnapshot = cloneServerMetricsSnapshot(nextMetrics);
+    const nextSnapshot = cloneServerMetricsSnapshot(nextMetrics);
+    state.lastServerMetricsSnapshot = nextSnapshot;
+    recordServerMetricsHistory(nextSnapshot);
     state.serverMetrics = nextMetrics;
     if (state.currentArtifactId) {
       renderInsightsPanel();
@@ -2541,6 +2545,7 @@ function renderInsightsPanel() {
             const deltaPrefix = delta > 0 ? "+" : "";
             const deltaLabel = hasDelta ? `${deltaPrefix}${delta}` : "";
             const deltaAriaLabel = hasDelta ? `Delta ${deltaLabel} since last server poll` : "";
+            const sparkline = renderMetricSparkline(state.currentArtifactId, item.key);
             return `
             <div class="insight-chip">
               <span class="insight-label">${escapeHtml(item.label)}</span>
@@ -2551,6 +2556,7 @@ function renderInsightsPanel() {
               >
                 ${hasDelta ? escapeHtml(deltaLabel) : ""}
               </span>
+              ${sparkline}
             </div>
           `;
           }
@@ -3838,6 +3844,95 @@ function cloneServerMetricsSnapshot(metricsByArtifact = {}) {
     });
   }
   return snapshot;
+}
+
+function recordServerMetricsHistory(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+
+  if (!Array.isArray(state.serverMetricsHistory)) {
+    state.serverMetricsHistory = [];
+  }
+
+  state.serverMetricsHistory.push({
+    at: Date.now(),
+    snapshot
+  });
+
+  if (state.serverMetricsHistory.length > SERVER_METRICS_HISTORY_LIMIT) {
+    state.serverMetricsHistory.splice(0, state.serverMetricsHistory.length - SERVER_METRICS_HISTORY_LIMIT);
+  }
+}
+
+function getServerMetricSeries(artifactId, metricKey) {
+  if (!artifactId || !metricKey) {
+    return [];
+  }
+
+  const history = Array.isArray(state.serverMetricsHistory) ? state.serverMetricsHistory : [];
+  if (!history.length) {
+    return [];
+  }
+
+  return history.map((entry) => {
+    const metrics = entry?.snapshot?.[artifactId];
+    if (!metrics || typeof metrics !== "object") {
+      return 0;
+    }
+    const value = Number(metrics[metricKey] ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  });
+}
+
+function renderSparklineSvg(values, options = {}) {
+  const series = Array.isArray(values) ? values.slice(-SERVER_METRICS_HISTORY_LIMIT) : [];
+  if (series.length < 2) {
+    return "";
+  }
+
+  const width = 60;
+  const height = 18;
+  const pad = 1.5;
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const range = max - min;
+  const stepX = series.length > 1 ? (width - pad * 2) / (series.length - 1) : 0;
+
+  const points = series.map((value, index) => {
+    const x = pad + stepX * index;
+    const ratio = range === 0 ? 0.5 : (value - min) / range;
+    const y = pad + (height - pad * 2) * (1 - ratio);
+    return { x, y };
+  });
+
+  const d = points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
+
+  const toneClass = options.toneClass ? ` ${options.toneClass}` : "";
+  return `
+    <svg class="sparkline${toneClass}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <path class="sparkline-path" d="${d}"></path>
+    </svg>
+  `;
+}
+
+function renderMetricSparkline(artifactId, metricKey) {
+  const series = getServerMetricSeries(artifactId, metricKey);
+  if (series.length < 2) {
+    return "";
+  }
+
+  const prev = series[series.length - 2] ?? 0;
+  const last = series[series.length - 1] ?? 0;
+  const toneClass = last > prev ? "is-up" : last < prev ? "is-down" : "is-flat";
+  const svg = renderSparklineSvg(series, { toneClass });
+  if (!svg) {
+    return "";
+  }
+
+  return `<span class="insight-sparkline" aria-hidden="true">${svg}</span>`;
 }
 
 function computeServerMetricDeltas(previousSnapshot = {}, nextMetrics = {}) {
