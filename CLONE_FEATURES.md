@@ -7,13 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
+- [ ] `webgl-context-loss-recovery` (P1): Detect WebGL context loss and show a recovery overlay (reload / optional low-load + reload) so kiosks do not silently freeze mid-session.
+- [ ] `preview-full-stack` (P1): Add `npm run preview:full` to serve `dist/` and proxy `/api/*` to the local API so maintainers can validate production builds without relying on Vite dev proxying.
+- [ ] `artifact-data-validate` (P1): Add catalog validation in `npm test` (unique ids, valid categories, hotspot/tour consistency) to prevent runtime surprises.
+- [ ] `analytics-retention-policy` (P1): Make JSON store retention configurable (caps + optional raw event storage disable) so long-running kiosks remain stable.
 - [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
-- [ ] `analytics-retention-policy` (P2): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
-- [ ] `preview-full-stack` (P3): Add a `npm run preview:full` path that runs API + preview together so maintainers can validate production build behavior without relying on `vite` dev proxying.
-- [ ] `webgl-context-loss-recovery` (P3): Detect WebGL context loss and show a recovery overlay (reload / retry / low-load suggestion) so kiosks do not silently freeze.
-- [ ] `artifact-data-validate` (P3): Add catalog validation in `npm test` (unique ids, referenced `modelUrl` exists, hotspots/tour ids consistent) to prevent runtime surprises.
-- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities, WebGL context hints) to shorten model QA loops.
+- [ ] `smoke-preview-full-stack` (P2): Add a quick smoke path that boots `preview:full` and validates both `/` and `/api/health` respond (future CI optional).
+- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
+- [ ] `api-store-migrations` (P3): Add a `schemaVersion` field + migration helper so future store shape changes remain backward compatible.
+- [ ] `viewer-error-telemetry` (P3): Capture and surface viewer load/render errors in the insights panel so kiosks expose failures without opening devtools.
 
 ## Implemented
 - 2026-02-09 · `playwright-kiosk-smoke`: Added `npm run smoke:kiosk` Playwright-driven kiosk smoke that boots API + Vite on random ports, exercises key UI flows, and verifies snapshot downloads. Evidence: `scripts/smoke-kiosk.mjs`, `package.json`, `vite.config.js`, `README.md`, `npm run smoke:kiosk`.
@@ -59,6 +62,7 @@
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
 - CMS links are user-controlled input: server-side URL allowlisting prevents the story/reference UI from ever persisting `javascript:` links into stored overrides.
 - Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, shareable camera state, guided tours, environment/lighting controls, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://3d.si.edu/voyager-story-standalone , https://developer.chrome.com/blog/model-viewer-ar , https://doc.babylonjs.com/toolsAndResources/sandbox/ , https://sketchfab.com/developers/viewer
+- Market scan addendum (untrusted, 2026-02-09): WebGL context loss is a first-class failure mode that should be handled explicitly for kiosk stability; browser guidance recommends listening for `webglcontextlost` / `webglcontextrestored` and prompting for recovery. Sources: https://www.khronos.org/webgl/wiki/HandlingContextLost , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextlost_event , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextrestored_event
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
