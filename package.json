@@ -10,6 +10,7 @@
     "assets:pull": "node scripts/pull-models.mjs",
     "assets:check": "node scripts/check-assets.mjs",
     "smoke:api": "node scripts/smoke-api.mjs",
+    "smoke:kiosk": "node scripts/smoke-kiosk.mjs",
     "test": "node --test",
     "build": "npm run assets:check && vite build",
     "preview": "vite preview"
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "playwright-core": "^1.58.2",
     "vite": "^7.1.10"
   }
 }

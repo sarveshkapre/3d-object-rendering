@@ -52,6 +52,7 @@ npm run preview
 npm run assets:check
 npm test
 npm run smoke:api
+npm run smoke:kiosk # optional (requires Google Chrome installed)
 ```
 
 ## Notes
