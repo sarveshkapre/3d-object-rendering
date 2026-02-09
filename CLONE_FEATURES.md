@@ -7,10 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `curator-client-validation` (P1, selected): Mirror server-side CMS validation rules in the Curator form (length counters, URL validation, keyword limits) so curators get fast feedback before submitting.
-- [ ] `viewer-load-retry` (P1, selected): When a model load fails, offer an in-place retry + "low load" fallback (reduced render quality) to keep kiosk sessions moving.
-- [ ] `asset-bundling-health` (P2, selected): Add a build-time check that confirms `public/models/*.glb` exist and match the artifact catalog so deployments do not ship broken links.
-- [ ] `insights-export` (P2, selected): Add a one-click "Copy metrics" action in the insights panel for docents to paste session summaries into reports.
 - [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
 - [ ] `accessibility-audit` (P2): Run an a11y sweep on overlays/modals (focus trap, aria labels, roving focus) and add regression checks for keyboard-only kiosk flows.
 - [ ] `viewer-snapshot` (P3): Add a "Capture snapshot" button that downloads a PNG from the canvas for exhibit reports and docent training materials.
@@ -19,6 +15,10 @@
 - [ ] `analytics-retention-policy` (P3): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 
 ## Implemented
+- 2026-02-09 · `curator-client-validation`: Added Curator Editor client-side counters + validity indicators (length/range/URL protocol), and sanitized curator payloads using shared CMS rules so submissions match server behavior before moderation. Evidence: `shared/cms.js`, `src/main.js`, `src/style.css`, `server/index.js`, `npm test`, `npm run build`.
+- 2026-02-09 · `viewer-load-retry`: Added retry controls directly in the loading overlays and introduced a "Low load" render mode (reduced DPR + shadows off) to recover from flaky loads on kiosk hardware. Evidence: `index.html`, `src/main.js`, `src/style.css`, `src/viewer.js`, `npm run build`.
+- 2026-02-09 · `asset-bundling-health`: Added `npm run assets:check` and wired it into `npm run build` so missing `public/models/*.glb` files fail fast in local and CI builds. Evidence: `scripts/check-assets.mjs`, `package.json`, `README.md`, `npm run assets:check`, `npm run build`.
+- 2026-02-09 · `insights-export`: Added a "Copy metrics" action in the insights panel that exports a concise text summary to the clipboard for docent reports. Evidence: `src/main.js`, `src/style.css`, `npm run build`.
 - 2026-02-09 · `ci-github-actions`: Added a minimal GitHub Actions workflow that runs `npm test` + `npm run build` on pushes/PRs so the repo stays production-ready. Evidence: `.github/workflows/ci.yml`, GitHub Actions run `21815851401`.
 - 2026-02-09 · `insights-sparkline-history`: Captured a rolling history of server poll snapshots and rendered per-metric sparklines in the insights panel so trend direction is visible at a glance. Evidence: `src/main.js`, `src/style.css`, `README.md`, `npm run build`.
 - 2026-02-09 · `cms-input-guards`: Enforced URL/protocol allowlists plus max field lengths on CMS overrides and moderation reasons, dropping unsafe `javascript:` links and clamping runaway payloads. Evidence: `server/index.js`, `server/index.test.js`, `npm test`, `npm run smoke:api`.
