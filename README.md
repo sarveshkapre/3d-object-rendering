@@ -48,6 +48,7 @@ npm run preview
 ## Verify
 
 ```bash
+npm run assets:check
 npm test
 npm run smoke:api
 ```

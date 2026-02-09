@@ -8,9 +8,10 @@
     "dev:web": "vite",
     "dev:api": "node server/index.js",
     "assets:pull": "node scripts/pull-models.mjs",
+    "assets:check": "node scripts/check-assets.mjs",
     "smoke:api": "node scripts/smoke-api.mjs",
     "test": "node --test",
-    "build": "vite build",
+    "build": "npm run assets:check && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
