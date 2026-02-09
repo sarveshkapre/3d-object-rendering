@@ -7,12 +7,15 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
+- [ ] `curator-client-validation` (P1, selected): Mirror server-side CMS validation rules in the Curator form (length counters, URL validation, keyword limits) so curators get fast feedback before submitting.
+- [ ] `viewer-load-retry` (P1, selected): When a model load fails, offer an in-place retry + "low load" fallback (reduced render quality) to keep kiosk sessions moving.
+- [ ] `asset-bundling-health` (P2, selected): Add a build-time check that confirms `public/models/*.glb` exist and match the artifact catalog so deployments do not ship broken links.
+- [ ] `insights-export` (P2, selected): Add a one-click "Copy metrics" action in the insights panel for docents to paste session summaries into reports.
 - [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
-- [ ] `curator-client-validation` (P2): Mirror server-side CMS validation rules in the Curator form (length counters, URL validation, keyword limits) so curators get fast feedback before submitting.
-- [ ] `insights-export` (P3): Add a one-click "Copy metrics" action in the insights panel for docents to paste session summaries into reports.
-- [ ] `viewer-load-retry` (P2): When a model load fails, offer an in-place retry + fallback to "low load" preset to keep kiosk sessions moving.
 - [ ] `accessibility-audit` (P2): Run an a11y sweep on overlays/modals (focus trap, aria labels, roving focus) and add regression checks for keyboard-only kiosk flows.
-- [ ] `asset-bundling-health` (P3): Add a build-time check that confirms `public/models/*.glb` exist and match the artifact catalog so deployments do not ship broken links.
+- [ ] `viewer-snapshot` (P3): Add a "Capture snapshot" button that downloads a PNG from the canvas for exhibit reports and docent training materials.
+- [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
+- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, WebGL context loss hints) to shorten model QA loops.
 - [ ] `analytics-retention-policy` (P3): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 
 ## Implemented
@@ -50,7 +53,7 @@
 - Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
 - CMS links are user-controlled input: server-side URL allowlisting prevents the story/reference UI from ever persisting `javascript:` links into stored overrides.
-- Market scan (untrusted): Modern web viewers often ship annotations/hotspots + guided tours, plus optional AR entry points (e.g. `<model-viewer>`, Sketchfab, and Smithsonian Voyager). Sources: https://modelviewer.dev , https://sketchfab.com/features/annotations , https://3d.si.edu/voyager
+- Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, guided tours, adjustable environment/lighting, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://developer.chrome.com/blog/model-viewer-ar , https://3d.si.edu/voyager-story-standalone
 
 ## Notes
 - This file is maintained by the autonomous clone loop.

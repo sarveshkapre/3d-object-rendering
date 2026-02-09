@@ -2,6 +2,7 @@ import "./style.css";
 import { artifacts, artifactMap, categories } from "./data/artifacts.js";
 import { createAnalyticsTracker } from "./analytics.js";
 import { ArtifactViewer } from "./viewer.js";
+import { CMS_LIMITS, sanitizeOverridePayload, sanitizeReferenceUrl } from "../shared/cms.js";
 
 const SESSION_PROGRESS_STORAGE_KEY = "artifact_viewer_progress";
 const SESSION_METRICS_STORAGE_KEY = "artifact_viewer_metrics";
@@ -596,6 +597,28 @@ function bindEvents() {
 
   elements.curatorTokenInput.addEventListener("input", () => {
     state.curatorToken = elements.curatorTokenInput.value;
+  });
+
+  const curatorValidationFields = [
+    elements.curatorTitleInput,
+    elements.curatorHookInput,
+    elements.curatorKeywordsInput,
+    elements.curatorYearInput,
+    elements.curatorRankInput,
+    elements.curatorStoryTitleInput,
+    elements.curatorStorySummaryInput,
+    elements.curatorStoryBodyInput,
+    elements.curatorStoryReferencesInput
+  ].filter(Boolean);
+
+  curatorValidationFields.forEach((field) => {
+    field.addEventListener("input", () => {
+      refreshCuratorValidation();
+    });
+  });
+
+  elements.curatorHotspotsList.addEventListener("input", () => {
+    refreshCuratorValidation();
   });
 
   elements.curatorResetBtn.addEventListener("click", () => {
@@ -1203,6 +1226,153 @@ function renderCuratorArtifactOptions() {
     state.curatorArtifactId = artifacts[0].id;
     elements.curatorArtifactSelect.value = artifacts[0].id;
   }
+}
+
+function ensureCuratorFieldCounter(field) {
+  if (!(field instanceof HTMLElement)) {
+    return { label: null, counter: null };
+  }
+
+  const label = field.closest("label.curator-field");
+  if (!(label instanceof HTMLLabelElement)) {
+    return { label: null, counter: null };
+  }
+
+  const head = label.querySelector(":scope > span");
+  if (!(head instanceof HTMLSpanElement)) {
+    return { label, counter: null };
+  }
+
+  let counter = head.querySelector(".curator-counter");
+  if (!(counter instanceof HTMLElement)) {
+    counter = document.createElement("span");
+    counter.className = "curator-counter";
+    head.appendChild(counter);
+  }
+
+  return { label, counter };
+}
+
+function setCuratorFieldIndicator(field, text, options = {}) {
+  const { label, counter } = ensureCuratorFieldCounter(field);
+  if (!label || !counter) {
+    return;
+  }
+
+  const invalid = options.invalid === true;
+  counter.textContent = text ?? "";
+  counter.classList.toggle("is-invalid", invalid);
+  label.classList.toggle("is-invalid", invalid);
+}
+
+function refreshCuratorValidation() {
+  if (!state.curatorOpen) {
+    return;
+  }
+
+  const updateMaxLen = (field, max) => {
+    if (!(field instanceof HTMLInputElement) && !(field instanceof HTMLTextAreaElement)) {
+      return;
+    }
+    const trimmed = field.value.trim();
+    const length = trimmed.length;
+    const invalid = Boolean(trimmed) && length > max;
+    setCuratorFieldIndicator(field, `${length}/${max}`, { invalid });
+  };
+
+  const updateNumericRange = (field, min, max) => {
+    if (!(field instanceof HTMLInputElement)) {
+      return;
+    }
+    const raw = field.value.trim();
+    if (!raw) {
+      setCuratorFieldIndicator(field, `${min}-${max}`, { invalid: false });
+      return;
+    }
+    const value = Number(raw);
+    const invalid = !Number.isFinite(value) || value < min || value > max;
+    setCuratorFieldIndicator(field, `${min}-${max}`, { invalid });
+  };
+
+  updateMaxLen(elements.curatorTitleInput, CMS_LIMITS.titleMax);
+  updateMaxLen(elements.curatorHookInput, CMS_LIMITS.hookMax);
+  updateMaxLen(elements.curatorStoryTitleInput, CMS_LIMITS.storyTitleMax);
+  updateMaxLen(elements.curatorStorySummaryInput, CMS_LIMITS.storySummaryMax);
+
+  updateNumericRange(elements.curatorYearInput, CMS_LIMITS.releaseYearMin, CMS_LIMITS.releaseYearMax);
+  updateNumericRange(elements.curatorRankInput, CMS_LIMITS.featuredRankMin, CMS_LIMITS.featuredRankMax);
+
+  const keywordTokens = elements.curatorKeywordsInput.value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const tooManyKeywords = keywordTokens.length > CMS_LIMITS.keywordsMaxCount;
+  const keywordTooLong = keywordTokens.some((token) => token.length > CMS_LIMITS.keywordMax);
+  setCuratorFieldIndicator(elements.curatorKeywordsInput, `${keywordTokens.length}/${CMS_LIMITS.keywordsMaxCount}`, {
+    invalid: tooManyKeywords || keywordTooLong
+  });
+
+  const storyLines = elements.curatorStoryBodyInput.value
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const tooManyParagraphs = storyLines.length > CMS_LIMITS.storyParagraphsMax;
+  const paragraphTooLong = storyLines.some((line) => line.length > CMS_LIMITS.storyParagraphMax);
+  setCuratorFieldIndicator(
+    elements.curatorStoryBodyInput,
+    `${storyLines.length}/${CMS_LIMITS.storyParagraphsMax} lines`,
+    { invalid: tooManyParagraphs || paragraphTooLong }
+  );
+
+  const referenceLines = elements.curatorStoryReferencesInput.value
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  let invalidReferences = 0;
+  const parsedReferences = referenceLines
+    .map((line) => {
+      const [labelPart, urlPart] = line.split("|");
+      const label = (labelPart ?? "").trim();
+      const url = (urlPart ?? "").trim();
+      if (!label || !url) {
+        invalidReferences += 1;
+        return null;
+      }
+      const sanitizedUrl = sanitizeReferenceUrl(url);
+      if (!sanitizedUrl) {
+        invalidReferences += 1;
+        return null;
+      }
+      if (label.length > CMS_LIMITS.referenceLabelMax || url.length > CMS_LIMITS.referenceUrlMax) {
+        invalidReferences += 1;
+      }
+      return { label, url: sanitizedUrl };
+    })
+    .filter(Boolean);
+  const tooManyReferences = parsedReferences.length > CMS_LIMITS.storyReferencesMax;
+  setCuratorFieldIndicator(
+    elements.curatorStoryReferencesInput,
+    `${parsedReferences.length}/${CMS_LIMITS.storyReferencesMax} refs`,
+    { invalid: tooManyReferences || invalidReferences > 0 }
+  );
+
+  const hotspotRows = Array.from(elements.curatorHotspotsList.querySelectorAll("[data-hotspot-id]"));
+  hotspotRows.forEach((row) => {
+    const label = row.querySelector(".curator-hotspot-label");
+    const title = row.querySelector(".curator-hotspot-title-input");
+    const body = row.querySelector(".curator-hotspot-body");
+    const reference = row.querySelector(".curator-hotspot-reference");
+
+    updateMaxLen(label, CMS_LIMITS.hotspotLabelMax);
+    updateMaxLen(title, CMS_LIMITS.hotspotTitleMax);
+    updateMaxLen(body, CMS_LIMITS.hotspotBodyMax);
+
+    if (reference instanceof HTMLInputElement) {
+      const raw = reference.value.trim();
+      const invalid = Boolean(raw) && !sanitizeReferenceUrl(raw);
+      setCuratorFieldIndicator(reference, "url", { invalid });
+    }
+  });
 }
 
 function renderModerationArtifactOptions() {
@@ -1943,6 +2113,7 @@ function setCuratorOpen(open, options = {}) {
     }
     renderCuratorArtifactOptions();
     populateCuratorForm(state.curatorArtifactId);
+    refreshCuratorValidation();
     elements.curatorArtifactSelect.focus();
   } else {
     elements.curatorBtn.focus();
@@ -1999,6 +2170,7 @@ function populateCuratorForm(artifactId) {
     : [];
 
   renderCuratorHotspotsEditor();
+  refreshCuratorValidation();
 
   const hasOverride = Boolean(state.cmsOverrides[artifactId]);
   if (hasOverride) {
@@ -2039,6 +2211,8 @@ function renderCuratorHotspotsEditor() {
       `
     )
     .join("");
+
+  refreshCuratorValidation();
 }
 
 function collectCuratorHotspots() {
@@ -2123,10 +2297,18 @@ async function saveCuratorOverride(artifactId) {
   }
 
   setCuratorBusy(true);
-  setCuratorStatus("Submitting override to moderation queue...", "neutral");
+  refreshCuratorValidation();
 
   try {
-    const payload = collectCuratorPayload();
+    const rawPayload = collectCuratorPayload();
+    const payload = sanitizeOverridePayload(rawPayload);
+    const adjusted = JSON.stringify(payload) !== JSON.stringify(rawPayload);
+    setCuratorStatus(
+      adjusted
+        ? "Submitting override (fields trimmed/invalid URLs dropped to match CMS limits)..."
+        : "Submitting override to moderation queue...",
+      "neutral"
+    );
     const response = await fetch(`/api/cms/overrides/${encodeURIComponent(artifactId)}`, {
       method: "PUT",
       headers: getCuratorHeaders(),

@@ -1083,10 +1083,30 @@ mark.search-highlight {
 }
 
 .curator-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   font-size: 0.7rem;
   color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.curator-counter {
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-soft);
+}
+
+.curator-counter.is-invalid {
+  color: #b54033;
+}
+
+.curator-field.is-invalid .search-input,
+.curator-field.is-invalid .curator-textarea {
+  border-color: rgba(181, 64, 51, 0.72);
 }
 
 .curator-row {
