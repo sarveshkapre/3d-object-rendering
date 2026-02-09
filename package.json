@@ -13,7 +13,8 @@
     "smoke:kiosk": "node scripts/smoke-kiosk.mjs",
     "test": "node --test",
     "build": "npm run assets:check && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:full": "node scripts/preview-full-stack.mjs"
   },
   "dependencies": {
     "three": "^0.181.0"

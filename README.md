@@ -53,6 +53,7 @@ npm run assets:check
 npm test
 npm run smoke:api
 npm run smoke:kiosk # optional (requires Google Chrome installed)
+npm run build && npm run preview:full # optional (serves dist/ with /api proxied to the local API)
 ```
 
 ## Notes
