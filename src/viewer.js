@@ -57,12 +57,15 @@ export class ArtifactViewer {
       alpha: false,
       powerPreference: "high-performance"
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.pixelRatioCap = 2;
+    this.lowLoadMode = false;
+    this.shadowsEnabled = true;
+    this.renderer.setPixelRatio(this._getTargetPixelRatio());
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = this.shadowsEnabled;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.controls = new OrbitControls(this.camera, this.canvas);
@@ -109,6 +112,34 @@ export class ArtifactViewer {
     this._initGroundShadow();
     this.setVisualPreset(this.visualPreset);
     this._animate();
+  }
+
+  _getTargetPixelRatio() {
+    const cap = Number.isFinite(this.pixelRatioCap) ? this.pixelRatioCap : 2;
+    return Math.min(window.devicePixelRatio || 1, cap);
+  }
+
+  setLowLoadMode(enabled) {
+    const next = Boolean(enabled);
+    if (this.lowLoadMode === next) {
+      return;
+    }
+
+    this.lowLoadMode = next;
+    this.pixelRatioCap = this.lowLoadMode ? 1 : 2;
+    this.shadowsEnabled = !this.lowLoadMode;
+
+    this.renderer.shadowMap.enabled = this.shadowsEnabled;
+    if (this.keyLight) {
+      this.keyLight.castShadow = this.shadowsEnabled;
+    }
+
+    if (!this.shadowsEnabled && this.shadowPlane) {
+      this.shadowPlane.visible = false;
+    }
+
+    this.renderer.setPixelRatio(this._getTargetPixelRatio());
+    this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
   }
 
   _notifyCameraChange() {
@@ -303,6 +334,11 @@ export class ArtifactViewer {
 
   _placeShadowPlane() {
     if (!this.shadowPlane) {
+      return;
+    }
+
+    if (!this.shadowsEnabled) {
+      this.shadowPlane.visible = false;
       return;
     }
 
@@ -562,7 +598,7 @@ export class ArtifactViewer {
     this.camera.aspect = safeWidth / safeHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(safeWidth, safeHeight, false);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this._getTargetPixelRatio());
   }
 
   _updateCameraAnimation(delta) {

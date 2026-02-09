@@ -62,9 +62,15 @@ const elements = {
   loadingOverlay: document.getElementById("loadingOverlay"),
   loadingBar: document.getElementById("loadingBar"),
   loadingText: document.getElementById("loadingText"),
+  loadingActions: document.getElementById("loadingActions"),
+  loadingRetryBtn: document.getElementById("loadingRetryBtn"),
+  loadingRetryLowBtn: document.getElementById("loadingRetryLowBtn"),
   loadingOverlayCompare: document.getElementById("loadingOverlayCompare"),
   loadingBarCompare: document.getElementById("loadingBarCompare"),
   loadingTextCompare: document.getElementById("loadingTextCompare"),
+  loadingActionsCompare: document.getElementById("loadingActionsCompare"),
+  loadingRetryBtnCompare: document.getElementById("loadingRetryBtnCompare"),
+  loadingRetryLowBtnCompare: document.getElementById("loadingRetryLowBtnCompare"),
   searchInput: document.getElementById("artifactSearchInput"),
   searchShortcutHint: document.getElementById("searchShortcutHint"),
   searchShortcutModifier: document.getElementById("searchShortcutModifier"),
@@ -182,8 +188,13 @@ const state = {
   toastTimer: null,
   pendingState: parsedUrlState,
   cameraSyncLock: false,
+  lowLoadMode: false,
   primaryLoading: false,
   compareLoading: false,
+  primaryLoadError: "",
+  compareLoadError: "",
+  primaryLastFailedArtifactId: null,
+  compareLastFailedArtifactId: null,
   isRestoringState: false,
   searchTrackTimer: null,
   tourAutoPlay: parsedUrlState.tourAutoPlay,
@@ -397,6 +408,8 @@ const compareViewer = new ArtifactViewer({
   }
 });
 
+primaryViewer.setLowLoadMode(state.lowLoadMode);
+compareViewer.setLowLoadMode(state.lowLoadMode);
 compareViewer.setHotspotVisibility(false);
 
 initialize();
@@ -574,6 +587,48 @@ function bindEvents() {
 
   elements.showcaseBtn.addEventListener("click", () => {
     setShowcaseActive(!state.showcaseActive, { source: "ui" });
+  });
+
+  elements.loadingRetryBtn.addEventListener("click", () => {
+    const artifactId = state.primaryLastFailedArtifactId ?? state.currentArtifactId;
+    if (!artifactId) {
+      return;
+    }
+    clearLoadingOverlayError("primary");
+    void loadArtifact(artifactId, { restoreFromUrl: false, source: "load_retry" });
+    trackEvent("artifact_load_retry_clicked", { artifactId, mode: "normal" });
+  });
+
+  elements.loadingRetryLowBtn.addEventListener("click", () => {
+    const artifactId = state.primaryLastFailedArtifactId ?? state.currentArtifactId;
+    if (!artifactId) {
+      return;
+    }
+    setLowLoadMode(true, { source: "load_retry_low" });
+    clearLoadingOverlayError("primary");
+    void loadArtifact(artifactId, { restoreFromUrl: false, source: "load_retry_low" });
+    trackEvent("artifact_load_retry_clicked", { artifactId, mode: "low_load" });
+  });
+
+  elements.loadingRetryBtnCompare.addEventListener("click", () => {
+    const artifactId = state.compareLastFailedArtifactId ?? state.compareArtifactId;
+    if (!artifactId) {
+      return;
+    }
+    clearLoadingOverlayError("compare");
+    void loadCompareArtifact(artifactId, { source: "compare_load_retry" });
+    trackEvent("compare_load_retry_clicked", { compareArtifactId: artifactId, mode: "normal" });
+  });
+
+  elements.loadingRetryLowBtnCompare.addEventListener("click", () => {
+    const artifactId = state.compareLastFailedArtifactId ?? state.compareArtifactId;
+    if (!artifactId) {
+      return;
+    }
+    setLowLoadMode(true, { source: "compare_load_retry_low" });
+    clearLoadingOverlayError("compare");
+    void loadCompareArtifact(artifactId, { source: "compare_load_retry_low" });
+    trackEvent("compare_load_retry_clicked", { compareArtifactId: artifactId, mode: "low_load" });
   });
 
   elements.curatorBtn.addEventListener("click", () => {
@@ -828,6 +883,72 @@ function bindEvents() {
   });
 }
 
+function setLowLoadMode(enabled, options = {}) {
+  const next = Boolean(enabled);
+  if (state.lowLoadMode === next) {
+    return;
+  }
+
+  state.lowLoadMode = next;
+  primaryViewer.setLowLoadMode(state.lowLoadMode);
+  compareViewer.setLowLoadMode(state.lowLoadMode);
+
+  if (!options.skipToast) {
+    showToast(state.lowLoadMode ? "Low load mode on" : "Low load mode off");
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("viewer_low_load_toggled", {
+      enabled: state.lowLoadMode,
+      source: options.source ?? "unknown"
+    });
+  }
+}
+
+function setLoadingOverlayError(which, message, artifactId) {
+  if (which === "compare") {
+    state.compareLoadError = message;
+    state.compareLastFailedArtifactId = artifactId ?? null;
+    elements.loadingTextCompare.textContent = message;
+    elements.loadingActionsCompare.hidden = false;
+    const track = elements.loadingOverlayCompare.querySelector(".loading-track");
+    if (track instanceof HTMLElement) {
+      track.hidden = true;
+    }
+    setCompareLoading(false);
+    return;
+  }
+
+  state.primaryLoadError = message;
+  state.primaryLastFailedArtifactId = artifactId ?? null;
+  elements.loadingText.textContent = message;
+  elements.loadingActions.hidden = false;
+  const track = elements.loadingOverlay.querySelector(".loading-track");
+  if (track instanceof HTMLElement) {
+    track.hidden = true;
+  }
+  setPrimaryLoading(false);
+}
+
+function clearLoadingOverlayError(which) {
+  if (which === "compare") {
+    state.compareLoadError = "";
+    elements.loadingActionsCompare.hidden = true;
+    const track = elements.loadingOverlayCompare.querySelector(".loading-track");
+    if (track instanceof HTMLElement) {
+      track.hidden = false;
+    }
+    return;
+  }
+
+  state.primaryLoadError = "";
+  elements.loadingActions.hidden = true;
+  const track = elements.loadingOverlay.querySelector(".loading-track");
+  if (track instanceof HTMLElement) {
+    track.hidden = false;
+  }
+}
+
 async function loadArtifact(artifactId, options = {}) {
   const artifact = artifactMap.get(artifactId);
   if (!artifact) {
@@ -854,10 +975,13 @@ async function loadArtifact(artifactId, options = {}) {
 
   renderGallery();
   renderCompareList();
+  clearLoadingOverlayError("primary");
+  elements.loadingText.textContent = "Preparing artifact…";
   setPrimaryLoading(true);
 
   try {
     await primaryViewer.loadArtifact(artifact);
+    clearLoadingOverlayError("primary");
     trackEvent("artifact_load_succeeded", {
       artifactId,
       durationMs: Math.round(performance.now() - loadStartedAt)
@@ -901,14 +1025,17 @@ async function loadArtifact(artifactId, options = {}) {
     updateHeaderControls();
     scheduleUrlUpdate();
   } catch (error) {
-    showToast("Model failed to load. Try another artifact.");
+    showToast("Model failed to load. Retry from the loading overlay.");
     trackEvent("artifact_load_failed", {
       artifactId,
       durationMs: Math.round(performance.now() - loadStartedAt)
     });
     console.error(error);
+    setLoadingOverlayError("primary", "Model failed to load.", artifactId);
   } finally {
-    window.setTimeout(() => setPrimaryLoading(false), 220);
+    if (!state.primaryLoadError) {
+      window.setTimeout(() => setPrimaryLoading(false), 220);
+    }
   }
 
   refreshArtifactSearchIndexes();
@@ -1056,10 +1183,13 @@ async function loadCompareArtifact(artifactId, options = {}) {
   state.compareArtifactId = artifactId;
   state.compareReady = false;
   renderCompareList();
+  clearLoadingOverlayError("compare");
+  elements.loadingTextCompare.textContent = "Preparing comparison artifact…";
   setCompareLoading(true);
 
   try {
     await compareViewer.loadArtifact(artifact);
+    clearLoadingOverlayError("compare");
     trackEvent("compare_load_succeeded", {
       compareArtifactId: artifactId,
       durationMs: Math.round(performance.now() - loadStartedAt)
@@ -1076,14 +1206,17 @@ async function loadCompareArtifact(artifactId, options = {}) {
 
     scheduleUrlUpdate();
   } catch (error) {
-    showToast("Comparison artifact failed to load.");
+    showToast("Comparison artifact failed to load. Retry from the loading overlay.");
     trackEvent("compare_load_failed", {
       compareArtifactId: artifactId,
       durationMs: Math.round(performance.now() - loadStartedAt)
     });
     console.error(error);
+    setLoadingOverlayError("compare", "Comparison model failed to load.", artifactId);
   } finally {
-    window.setTimeout(() => setCompareLoading(false), 220);
+    if (!state.compareLoadError) {
+      window.setTimeout(() => setCompareLoading(false), 220);
+    }
   }
 }
 
@@ -3121,19 +3254,41 @@ function setCompareModeUI(enabled) {
 }
 
 function setPrimaryLoading(loading) {
-  state.primaryLoading = loading;
-  elements.loadingOverlay.classList.toggle("is-visible", loading);
-  elements.loadingOverlay.setAttribute("aria-hidden", String(!loading));
-  if (loading) {
+  state.primaryLoading = Boolean(loading);
+  const visible = state.primaryLoading || Boolean(state.primaryLoadError);
+  elements.loadingOverlay.classList.toggle("is-visible", visible);
+  elements.loadingOverlay.setAttribute("aria-hidden", String(!visible));
+
+  const track = elements.loadingOverlay.querySelector(".loading-track");
+  if (track instanceof HTMLElement) {
+    track.hidden = !state.primaryLoading && Boolean(state.primaryLoadError);
+  }
+
+  if (elements.loadingActions) {
+    elements.loadingActions.hidden = !state.primaryLoadError;
+  }
+
+  if (state.primaryLoading) {
     elements.loadingBar.style.width = "2%";
   }
 }
 
 function setCompareLoading(loading) {
-  state.compareLoading = loading;
-  elements.loadingOverlayCompare.classList.toggle("is-visible", loading);
-  elements.loadingOverlayCompare.setAttribute("aria-hidden", String(!loading));
-  if (loading) {
+  state.compareLoading = Boolean(loading);
+  const visible = state.compareLoading || Boolean(state.compareLoadError);
+  elements.loadingOverlayCompare.classList.toggle("is-visible", visible);
+  elements.loadingOverlayCompare.setAttribute("aria-hidden", String(!visible));
+
+  const track = elements.loadingOverlayCompare.querySelector(".loading-track");
+  if (track instanceof HTMLElement) {
+    track.hidden = !state.compareLoading && Boolean(state.compareLoadError);
+  }
+
+  if (elements.loadingActionsCompare) {
+    elements.loadingActionsCompare.hidden = !state.compareLoadError;
+  }
+
+  if (state.compareLoading) {
     elements.loadingBarCompare.style.width = "2%";
   }
 }

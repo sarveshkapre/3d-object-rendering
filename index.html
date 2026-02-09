@@ -68,6 +68,10 @@
               <div class="loading-track" role="progressbar" aria-label="Model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                 <div id="loadingBar" class="loading-bar"></div>
               </div>
+              <div id="loadingActions" class="loading-actions" hidden>
+                <button id="loadingRetryBtn" class="chip-btn is-active" type="button">Retry</button>
+                <button id="loadingRetryLowBtn" class="chip-btn" type="button">Retry (Low Load)</button>
+              </div>
             </div>
 
             <div id="hotspotLayer" class="hotspot-layer" aria-hidden="true"></div>
@@ -80,6 +84,10 @@
               <p id="loadingTextCompare" class="loading-text">Preparing comparison artifact…</p>
               <div class="loading-track" role="progressbar" aria-label="Comparison model loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                 <div id="loadingBarCompare" class="loading-bar"></div>
+              </div>
+              <div id="loadingActionsCompare" class="loading-actions" hidden>
+                <button id="loadingRetryBtnCompare" class="chip-btn is-active" type="button">Retry</button>
+                <button id="loadingRetryLowBtnCompare" class="chip-btn" type="button">Retry (Low Load)</button>
               </div>
             </div>
 

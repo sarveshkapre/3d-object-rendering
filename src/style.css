@@ -915,6 +915,12 @@ mark.search-highlight {
   transition: width 130ms linear;
 }
 
+.loading-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
 .compare-pane-title {
   position: absolute;
   top: 1rem;
