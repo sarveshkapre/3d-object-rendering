@@ -188,7 +188,12 @@ const elements = {
   shareBtn: document.getElementById("shareBtn"),
   listToggleBtn: document.getElementById("listToggleBtn"),
   storyToggleBtn: document.getElementById("storyToggleBtn"),
-  toast: document.getElementById("toast")
+  toast: document.getElementById("toast"),
+  webglRecoveryModal: document.getElementById("webglRecoveryModal"),
+  webglRecoveryCloseBtn: document.getElementById("webglRecoveryCloseBtn"),
+  webglRecoveryMessage: document.getElementById("webglRecoveryMessage"),
+  webglRecoveryReloadBtn: document.getElementById("webglRecoveryReloadBtn"),
+  webglRecoveryLowReloadBtn: document.getElementById("webglRecoveryLowReloadBtn")
 };
 
 const parsedUrlState = parseUrlState();
@@ -259,6 +264,9 @@ const state = {
   moderationRecentDecisions: [],
   moderationRevisions: [],
   shortcutsOpen: false,
+  webglRecoveryOpen: false,
+  webglRecoveryPane: null,
+  webglRecoveryReturnFocus: null,
   previousTourState: {
     active: false,
     index: null
@@ -448,7 +456,45 @@ compareViewer.setHotspotVisibility(false);
 
 document.documentElement.dataset.webgl = primaryViewer.webglAvailable ? "available" : "unavailable";
 
+registerWebglRecoveryHandlers();
 initialize();
+
+function registerWebglRecoveryHandlers() {
+  const attach = (viewer, canvas, pane) => {
+    if (!canvas) {
+      return;
+    }
+
+    canvas.addEventListener(
+      "webglcontextlost",
+      (event) => {
+        // Prevent the default behavior so a restore event can fire.
+        event.preventDefault();
+        viewer.handleContextLost?.();
+        document.documentElement.dataset.webgl = "unavailable";
+        setWebglRecoveryOpen(true, { source: "webgl", pane });
+        showToast("Rendering interrupted. Reload recommended.");
+        trackEvent("webgl_context_lost", {
+          pane,
+          artifactId: state.currentArtifactId,
+          compareEnabled: state.compareEnabled
+        });
+      },
+      { passive: false }
+    );
+
+    canvas.addEventListener("webglcontextrestored", () => {
+      trackEvent("webgl_context_restored", {
+        pane,
+        artifactId: state.currentArtifactId,
+        compareEnabled: state.compareEnabled
+      });
+    });
+  };
+
+  attach(primaryViewer, elements.canvas, "primary");
+  attach(compareViewer, elements.canvasCompare, "compare");
+}
 
 function initialize() {
   elements.searchInput.value = state.searchQuery;
@@ -514,6 +560,27 @@ async function bootstrap(artifactId) {
 function bindEvents() {
   window.addEventListener("resize", handleResize);
   document.addEventListener("keydown", handleKeydown);
+
+  elements.webglRecoveryCloseBtn.addEventListener("click", () => {
+    setWebglRecoveryOpen(false, { source: "ui" });
+  });
+
+  elements.webglRecoveryReloadBtn.addEventListener("click", () => {
+    trackEvent("webgl_recovery_reload_clicked", { pane: state.webglRecoveryPane ?? "unknown" });
+    window.location.reload();
+  });
+
+  elements.webglRecoveryLowReloadBtn.addEventListener("click", () => {
+    setPreferredLowLoadMode(true);
+    trackEvent("webgl_recovery_low_load_reload_clicked", { pane: state.webglRecoveryPane ?? "unknown" });
+    window.location.reload();
+  });
+
+  elements.webglRecoveryModal.addEventListener("click", (event) => {
+    if (event.target === elements.webglRecoveryModal) {
+      setWebglRecoveryOpen(false, { source: "overlay" });
+    }
+  });
 
   elements.searchInput.addEventListener("input", () => {
     state.searchQuery = elements.searchInput.value.trim();
@@ -2616,6 +2683,45 @@ function setShortcutsOpen(open, options = {}) {
   }
 }
 
+function setWebglRecoveryOpen(open, options = {}) {
+  state.webglRecoveryOpen = Boolean(open);
+  state.webglRecoveryPane = options.pane ?? state.webglRecoveryPane;
+  elements.webglRecoveryModal.hidden = !state.webglRecoveryOpen;
+
+  if (state.webglRecoveryOpen) {
+    haltShowcaseForManualInteraction("webgl_recovery_open");
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { skipTrack: true });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { skipTrack: true });
+    }
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { skipTrack: true });
+    }
+
+    state.webglRecoveryReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const paneLabel = state.webglRecoveryPane === "compare" ? "Comparison" : "Primary";
+    elements.webglRecoveryMessage.textContent = `${paneLabel} WebGL rendering was interrupted. Reload the viewer to restore 3D rendering. You can also enable Low Load mode before reloading for kiosk stability.`;
+    elements.webglRecoveryReloadBtn.focus();
+  } else {
+    const returnTo = state.webglRecoveryReturnFocus;
+    state.webglRecoveryReturnFocus = null;
+    state.webglRecoveryPane = null;
+    if (returnTo && typeof returnTo.focus === "function") {
+      returnTo.focus();
+    } else {
+      elements.snapshotBtn.focus();
+    }
+  }
+
+  trackEvent("webgl_recovery_overlay_toggled", {
+    open: state.webglRecoveryOpen,
+    source: options.source ?? "unknown",
+    pane: state.webglRecoveryPane ?? "unknown"
+  });
+}
+
 function renderFilters() {
   elements.filterBar.innerHTML = "";
 
@@ -3510,6 +3616,9 @@ function handleKeydown(event) {
     if (state.shortcutsOpen) {
       setShortcutsOpen(false, { source: "keyboard", skipTrack: true });
     }
+    if (state.webglRecoveryOpen) {
+      setWebglRecoveryOpen(false, { source: "keyboard" });
+    }
     if (state.curatorOpen) {
       setCuratorOpen(false, { source: "keyboard", skipTrack: true });
     }
@@ -3528,6 +3637,13 @@ function handleKeydown(event) {
   }
 
   if (event.key === "Escape") {
+    if (state.webglRecoveryOpen) {
+      event.preventDefault();
+      setWebglRecoveryOpen(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_webgl_recovery" });
+      return;
+    }
+
     if (state.moderationOpen) {
       event.preventDefault();
       setModerationOpen(false, { source: "keyboard" });
@@ -3587,6 +3703,10 @@ function handleKeydown(event) {
   }
 
   if (state.shortcutsOpen) {
+    return;
+  }
+
+  if (state.webglRecoveryOpen) {
     return;
   }
 

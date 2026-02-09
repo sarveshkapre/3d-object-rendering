@@ -152,6 +152,22 @@
           <div id="compareArtifactList" class="compare-list"></div>
         </aside>
 
+        <div id="webglRecoveryModal" class="shortcuts-modal webgl-recovery-modal" hidden>
+          <div class="shortcuts-card webgl-recovery-card glass" role="alertdialog" aria-modal="true" aria-labelledby="webglRecoveryTitle" aria-describedby="webglRecoveryMessage">
+            <div class="shortcuts-head">
+              <h2 id="webglRecoveryTitle" class="shortcuts-title">Rendering Interrupted</h2>
+              <button id="webglRecoveryCloseBtn" class="chip-btn" type="button" aria-label="Close rendering notice">Close</button>
+            </div>
+            <p id="webglRecoveryMessage" class="webgl-recovery-message">
+              WebGL rendering was interrupted. Reload the viewer to restore 3D rendering. You can also enable Low Load mode before reloading for kiosk stability.
+            </p>
+            <div class="webgl-recovery-actions">
+              <button id="webglRecoveryReloadBtn" class="chip-btn" type="button">Reload</button>
+              <button id="webglRecoveryLowReloadBtn" class="chip-btn" type="button">Low Load + Reload</button>
+            </div>
+          </div>
+        </div>
+
         <div id="shortcutsModal" class="shortcuts-modal" hidden>
           <div class="shortcuts-card glass" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
             <div class="shortcuts-head">

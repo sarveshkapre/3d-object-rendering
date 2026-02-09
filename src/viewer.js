@@ -47,6 +47,9 @@ export class ArtifactViewer {
 
     this.webglAvailable = true;
     this.webglUnavailableReason = null;
+    this.contextLost = false;
+    this.running = false;
+    this.rafId = null;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#ffffff");
@@ -132,6 +135,26 @@ export class ArtifactViewer {
       this._initGroundShadow();
       this.setVisualPreset(this.visualPreset);
       this._animate();
+    }
+  }
+
+  handleContextLost() {
+    if (this.contextLost) {
+      return;
+    }
+    this.contextLost = true;
+    this.webglAvailable = false;
+    this.webglUnavailableReason = "context_lost";
+    this.stop();
+    this.renderer = null;
+    this._positionStubHotspots();
+  }
+
+  stop() {
+    this.running = false;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
     }
   }
 
@@ -840,16 +863,23 @@ export class ArtifactViewer {
 
   _animate() {
     const tick = () => {
+      if (!this.running) {
+        return;
+      }
       const delta = this.clock.getDelta();
 
       this._updateCameraAnimation(delta);
       this.controls.update();
       this._updateHotspotPositions();
+      if (!this.renderer) {
+        return;
+      }
       this.renderer.render(this.scene, this.camera);
 
-      requestAnimationFrame(tick);
+      this.rafId = requestAnimationFrame(tick);
     };
 
+    this.running = true;
     tick();
   }
 }
