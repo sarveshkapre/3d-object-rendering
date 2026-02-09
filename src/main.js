@@ -446,12 +446,17 @@ primaryViewer.setLowLoadMode(state.lowLoadMode);
 compareViewer.setLowLoadMode(state.lowLoadMode);
 compareViewer.setHotspotVisibility(false);
 
+document.documentElement.dataset.webgl = primaryViewer.webglAvailable ? "available" : "unavailable";
+
 initialize();
 
 function initialize() {
   elements.searchInput.value = state.searchQuery;
   elements.sortSelect.value = state.sortMode;
   updateSearchShortcutHint();
+  if (!primaryViewer.webglAvailable) {
+    showToast("WebGL unavailable. Viewer running in fallback mode.");
+  }
   state.curatorArtifactId = parsedUrlState.artifactId && artifactMap.has(parsedUrlState.artifactId) ? parsedUrlState.artifactId : artifacts[0]?.id ?? null;
   state.moderationArtifactId = state.curatorArtifactId;
   renderCuratorArtifactOptions();

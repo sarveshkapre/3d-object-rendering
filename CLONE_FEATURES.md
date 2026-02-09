@@ -7,7 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode + sync, and tour controls in one run (`npm run smoke:kiosk`).
 - [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
 - [ ] `analytics-retention-policy` (P2): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 - [ ] `preview-full-stack` (P3): Add a `npm run preview:full` path that runs API + preview together so maintainers can validate production build behavior without relying on `vite` dev proxying.
@@ -17,6 +16,8 @@
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
 
 ## Implemented
+- 2026-02-09 · `playwright-kiosk-smoke`: Added `npm run smoke:kiosk` Playwright-driven kiosk smoke that boots API + Vite on random ports, exercises key UI flows, and verifies snapshot downloads. Evidence: `scripts/smoke-kiosk.mjs`, `package.json`, `vite.config.js`, `README.md`, `npm run smoke:kiosk`.
+- 2026-02-09 · `viewer-webgl-fallback`: Kept the app usable when WebGL renderer creation fails by falling back to a UI-first mode (gallery, hotspots, tours, compare, snapshots still function), and exposed WebGL availability via `documentElement.dataset.webgl`. Evidence: `src/viewer.js`, `src/main.js`, `npm run smoke:kiosk`, `npm run build`.
 - 2026-02-09 · `viewer-snapshot`: Added snapshot capture (`Snapshot` button or `X`) that downloads a PNG from the current render; compare mode exports a combined side-by-side image. Evidence: `index.html`, `src/main.js`, `src/viewer.js`, `README.md`, `npm test`, `npm run build`.
 - 2026-02-09 · `viewer-low-load-toggle`: Added a persistent toolbar toggle + `L` keyboard shortcut for low-load mode (reduced DPR + shadows off), persisted the preference via local storage, and documented the capability. Evidence: `index.html`, `src/main.js`, `README.md`, `npm test`, `npm run build`.
 - 2026-02-09 · `curator-client-validation`: Added Curator Editor client-side counters + validity indicators (length/range/URL protocol), and sanitized curator payloads using shared CMS rules so submissions match server behavior before moderation. Evidence: `shared/cms.js`, `src/main.js`, `src/style.css`, `server/index.js`, `npm test`, `npm run build`.

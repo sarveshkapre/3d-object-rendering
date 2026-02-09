@@ -45,39 +45,58 @@ export class ArtifactViewer {
     this.hotspotLayer = hotspotLayer;
     this.callbacks = callbacks;
 
+    this.webglAvailable = true;
+    this.webglUnavailableReason = null;
+
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#ffffff");
 
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.01, 300);
     this.camera.position.set(0, 1.4, 3.6);
 
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: true,
-      alpha: false,
-      powerPreference: "high-performance"
-    });
+    this.renderer = null;
+    try {
+      this.renderer = new THREE.WebGLRenderer({
+        canvas: this.canvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance"
+      });
+    } catch (error) {
+      this.webglAvailable = false;
+      this.webglUnavailableReason = String(error && error.message ? error.message : "webgl_unavailable");
+      this.renderer = null;
+    }
     this.pixelRatioCap = 2;
     this.lowLoadMode = false;
     this.shadowsEnabled = true;
-    this.renderer.setPixelRatio(this._getTargetPixelRatio());
-    this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = this.shadowsEnabled;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.controls = null;
+    if (this.renderer) {
+      this.renderer.setPixelRatio(this._getTargetPixelRatio());
+      this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.05;
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.renderer.shadowMap.enabled = this.shadowsEnabled;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.controls = new OrbitControls(this.camera, this.canvas);
-    this.controls.enableDamping = true;
-    this.controls.enablePan = true;
-    this.controls.dampingFactor = 0.06;
-    this.controls.rotateSpeed = 0.8;
-    this.controls.minDistance = 0.4;
-    this.controls.maxDistance = 25;
-    this.controls.addEventListener("change", () => {
-      this._notifyCameraChange();
-    });
+      this.controls = new OrbitControls(this.camera, this.canvas);
+      this.controls.enableDamping = true;
+      this.controls.enablePan = true;
+      this.controls.dampingFactor = 0.06;
+      this.controls.rotateSpeed = 0.8;
+      this.controls.minDistance = 0.4;
+      this.controls.maxDistance = 25;
+      this.controls.addEventListener("change", () => {
+        this._notifyCameraChange();
+      });
+    } else {
+      // Stub control target so kiosk flows and narratives remain usable without WebGL.
+      this.controls = {
+        target: new THREE.Vector3(0, 0.6, 0),
+        update: () => {}
+      };
+    }
 
     this.clock = new THREE.Clock();
     this.loader = new GLTFLoader();
@@ -108,14 +127,36 @@ export class ArtifactViewer {
     this.cameraEventMuted = false;
     this.visualPreset = "white";
 
-    this._initLighting();
-    this._initGroundShadow();
-    this.setVisualPreset(this.visualPreset);
-    this._animate();
+    if (this.renderer) {
+      this._initLighting();
+      this._initGroundShadow();
+      this.setVisualPreset(this.visualPreset);
+      this._animate();
+    }
   }
 
   captureSnapshotCanvas(options = {}) {
     const maxEdge = Number.isFinite(options.maxEdge) ? options.maxEdge : 2400;
+    if (!this.renderer) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 800;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("snapshot_ctx_unavailable");
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#2a2520";
+      ctx.font = "600 34px Space Grotesk, system-ui, -apple-system, sans-serif";
+      ctx.fillText("WebGL unavailable", 60, 120);
+      ctx.font = "400 20px Space Grotesk, system-ui, -apple-system, sans-serif";
+      const title = this.currentArtifact?.title ? String(this.currentArtifact.title) : "3D rendering disabled";
+      ctx.fillText(title, 60, 165);
+      ctx.fillStyle = "#5b534c";
+      ctx.fillText("Snapshot captured from fallback mode.", 60, 210);
+      return canvas;
+    }
     const size = new THREE.Vector2();
     this.renderer.getDrawingBufferSize(size);
     const width = Math.max(0, Math.floor(size.x));
@@ -197,6 +238,10 @@ export class ArtifactViewer {
     this.pixelRatioCap = this.lowLoadMode ? 1 : 2;
     this.shadowsEnabled = !this.lowLoadMode;
 
+    if (!this.renderer) {
+      return;
+    }
+
     this.renderer.shadowMap.enabled = this.shadowsEnabled;
     if (this.keyLight) {
       this.keyLight.castShadow = this.shadowsEnabled;
@@ -260,7 +305,9 @@ export class ArtifactViewer {
     this.visualPreset = normalizedPreset;
 
     this.scene.background = new THREE.Color(preset.background);
-    this.renderer.toneMappingExposure = preset.exposure;
+    if (this.renderer) {
+      this.renderer.toneMappingExposure = preset.exposure;
+    }
 
     if (this.hemisphereLight) {
       this.hemisphereLight.color.set(preset.hemisphere.sky);
@@ -292,6 +339,18 @@ export class ArtifactViewer {
 
     this._removeCurrentModel();
     this._clearHotspots();
+
+    if (!this.renderer) {
+      this.callbacks.onLoadProgress?.(1);
+      this._createHotspots(artifact.hotspots ?? []);
+      this._positionStubHotspots();
+      this.callbacks.onArtifactLoad?.({
+        artifact,
+        hotspotCount: this.hotspots.length,
+        webglAvailable: false
+      });
+      return;
+    }
 
     const group = await this._loadModel(artifact.modelUrl);
     this.modelRoot = group;
@@ -450,6 +509,30 @@ export class ArtifactViewer {
     this.callbacks.onHotspotData?.([]);
   }
 
+  _positionStubHotspots() {
+    if (!this.hotspots.length) {
+      return;
+    }
+
+    // Place dots in a stable layout so kiosk flows remain usable without 3D projection.
+    const spread = 35;
+    this.hotspots.forEach(({ button, data }, index) => {
+      const norm = Array.isArray(data.norm) ? data.norm : [0, 0, 0];
+      const x = Number.isFinite(norm[0]) ? norm[0] : 0;
+      const y = Number.isFinite(norm[1]) ? norm[1] : 0;
+      const left = 50 + Math.max(-1, Math.min(1, x)) * spread;
+      const top = 50 - Math.max(-1, Math.min(1, y)) * spread;
+      button.style.left = `${left}%`;
+      button.style.top = `${top}%`;
+      button.style.transform = "";
+
+      if (!Number.isFinite(norm[0]) && !Number.isFinite(norm[1])) {
+        button.style.left = `${50 + (index % 5) * 8 - 16}%`;
+        button.style.top = `${40 + Math.floor(index / 5) * 9}%`;
+      }
+    });
+  }
+
   _normToWorldPosition(norm) {
     return new THREE.Vector3(
       this.modelCenter.x + norm[0] * (this.modelSize.x * 0.5),
@@ -508,6 +591,10 @@ export class ArtifactViewer {
   }
 
   focusHotspot(hotspotId, options = {}) {
+    if (!this.renderer) {
+      return;
+    }
+
     const hotspot = this.hotspots.find(({ data }) => data.id === hotspotId);
     if (!hotspot) {
       return;
@@ -596,6 +683,14 @@ export class ArtifactViewer {
   }
 
   resetView(immediate = false) {
+    if (!this.renderer) {
+      this.camera.position.copy(this.defaultView.position);
+      this.controls.target.copy(this.defaultView.target);
+      this.controls.update();
+      this._notifyCameraChange();
+      return;
+    }
+
     if (immediate) {
       this.camera.position.copy(this.defaultView.position);
       this.controls.target.copy(this.defaultView.target);
@@ -665,6 +760,9 @@ export class ArtifactViewer {
     const safeHeight = Math.max(1, height);
     this.camera.aspect = safeWidth / safeHeight;
     this.camera.updateProjectionMatrix();
+    if (!this.renderer) {
+      return;
+    }
     this.renderer.setSize(safeWidth, safeHeight, false);
     this.renderer.setPixelRatio(this._getTargetPixelRatio());
   }
