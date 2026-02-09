@@ -7,12 +7,16 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode, and tour controls in one run.
-- [ ] `accessibility-audit` (P2): Run an a11y sweep on overlays/modals (focus trap, aria labels, roving focus) and add regression checks for keyboard-only kiosk flows.
-- [ ] `viewer-snapshot` (P3): Add a "Capture snapshot" button that downloads a PNG from the canvas for exhibit reports and docent training materials.
+- [ ] `viewer-low-load-toggle` (P1): Add a persistent "Low load" toggle in the top toolbar (plus `L` keyboard shortcut) so kiosk operators can explicitly trade fidelity for stability without waiting for a failed load.
+- [ ] `viewer-snapshot` (P2): Add a "Snapshot" action that downloads a PNG of the active canvas (and, in compare mode, supports capturing both panes) for exhibit reports and docent training materials.
+- [ ] `playwright-kiosk-smoke` (P2): Add a scripted browser smoke flow that verifies gallery search, hotspot keyboard navigation, compare mode + sync, and tour controls in one run (`npm run smoke:kiosk`).
+- [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
+- [ ] `analytics-retention-policy` (P2): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
+- [ ] `preview-full-stack` (P3): Add a `npm run preview:full` path that runs API + preview together so maintainers can validate production build behavior without relying on `vite` dev proxying.
+- [ ] `webgl-context-loss-recovery` (P3): Detect WebGL context loss and show a recovery overlay (reload / retry / low-load suggestion) so kiosks do not silently freeze.
+- [ ] `artifact-data-validate` (P3): Add catalog validation in `npm test` (unique ids, referenced `modelUrl` exists, hotspots/tour ids consistent) to prevent runtime surprises.
+- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities, WebGL context hints) to shorten model QA loops.
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
-- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, WebGL context loss hints) to shorten model QA loops.
-- [ ] `analytics-retention-policy` (P3): Add configurable retention (events + submissions) so long-running kiosks do not bloat the JSON store indefinitely.
 
 ## Implemented
 - 2026-02-09 · `curator-client-validation`: Added Curator Editor client-side counters + validity indicators (length/range/URL protocol), and sanitized curator payloads using shared CMS rules so submissions match server behavior before moderation. Evidence: `shared/cms.js`, `src/main.js`, `src/style.css`, `server/index.js`, `npm test`, `npm run build`.
@@ -53,7 +57,7 @@
 - Delta badges are the smallest useful trend surface for operators: they add immediate directional context without consuming panel space needed for hotspot and compare leaderboards.
 - A dedicated `smoke:api` command shortens maintainer feedback loops by validating service boot + analytics ingestion in seconds without touching persistent local data.
 - CMS links are user-controlled input: server-side URL allowlisting prevents the story/reference UI from ever persisting `javascript:` links into stored overrides.
-- Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, guided tours, adjustable environment/lighting, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://developer.chrome.com/blog/model-viewer-ar , https://3d.si.edu/voyager-story-standalone
+- Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, shareable camera state, guided tours, environment/lighting controls, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://3d.si.edu/voyager-story-standalone , https://developer.chrome.com/blog/model-viewer-ar , https://doc.babylonjs.com/toolsAndResources/sandbox/ , https://sketchfab.com/developers/viewer
 
 ## Notes
 - This file is maintained by the autonomous clone loop.
