@@ -7,9 +7,6 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `accessibility-audit` (P1, selected): Tighten overlay/modal accessibility (focus trap + focus restore, better dialog semantics, visible keyboard focus ring) and extend `smoke:kiosk` with keyboard-only regression checks.
-- [ ] `smoke-preview-full-stack` (P1, selected): Add a smoke command that boots `preview:full` and validates both `/` and `/api/health` respond before shipping builds.
-- [ ] `ci-smoke-api` (P2, selected): Run `npm run smoke:api` in GitHub Actions to catch backend regressions that unit tests miss (real process + HTTP calls).
 - [ ] `reduced-motion` (P3): Respect `prefers-reduced-motion` by disabling non-essential animations/transitions (panels, pings, modals) for accessibility reviews.
 - [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
@@ -19,6 +16,7 @@
 - [ ] `diagnose-webgl-fallback` (P3): Add a small UI badge and help copy when WebGL is unavailable so docents understand the reduced rendering mode.
 
 ## Implemented
+- 2026-02-10 · `accessibility-audit`: Added consistent keyboard focus rings, improved dialog semantics, and implemented focus trap + focus restore for overlays; extended kiosk smoke to assert focus stays within modals and returns to the opener. Evidence: `index.html`, `src/style.css`, `src/main.js`, `scripts/smoke-kiosk.mjs`, `npm run smoke:kiosk`, `npm run build`.
 - 2026-02-10 · `smoke-preview-full-stack`: Added `npm run smoke:preview:full` to build + boot `preview:full` and verify both `/` and `/api/health` respond so maintainers can validate production builds end-to-end. Evidence: `scripts/smoke-preview-full-stack.mjs`, `package.json`, `README.md`, `npm run smoke:preview:full`.
 - 2026-02-10 · `ci-smoke-api`: Added `npm run smoke:api` as a GitHub Actions step to catch backend process+HTTP regressions beyond unit tests. Evidence: `.github/workflows/ci.yml`, `scripts/smoke-api.mjs`, `npm run smoke:api`.
 - 2026-02-09 · `webgl-context-loss-recovery`: Detects WebGL context loss on both canvases, stops rendering, and shows a recovery overlay with reload options so kiosk sessions do not freeze silently. Evidence: `index.html`, `src/main.js`, `src/viewer.js`, `src/style.css`, `npm run smoke:kiosk`, `npm run build`.
@@ -70,6 +68,7 @@
 - Running `vite preview` alone cannot proxy `/api`; a combined preview server that serves `dist/` while proxying to the local API makes production-build verification a one-command workflow.
 - Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, shareable camera state, guided tours, environment/lighting controls, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://3d.si.edu/voyager-story-standalone , https://developer.chrome.com/blog/model-viewer-ar , https://doc.babylonjs.com/toolsAndResources/sandbox/ , https://sketchfab.com/developers/viewer
 - Market scan addendum (untrusted, 2026-02-09): WebGL context loss is a first-class failure mode that should be handled explicitly for kiosk stability; browser guidance recommends listening for `webglcontextlost` / `webglcontextrestored` and prompting for recovery. Sources: https://www.khronos.org/webgl/wiki/HandlingContextLost , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextlost_event , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextrestored_event
+- Market scan addendum (untrusted, 2026-02-10): Modal dialogs in kiosk flows are expected to trap focus and restore it to the opener; WAI-ARIA Authoring Practices remains the baseline reference for dialog semantics and keyboard behavior. Sources: https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/ , https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
 
 ## Notes
 - This file is maintained by the autonomous clone loop.

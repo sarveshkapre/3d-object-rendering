@@ -174,6 +174,64 @@ async function main() {
       );
 
       await page.waitForSelector(".hotspot-dot", { timeout: 60000, state: "attached" });
+
+      // Accessibility regression: modal focus should be trapped and restored to the opener.
+      await page.locator("#shortcutsBtn").focus();
+      await page.keyboard.press("?");
+      await page.waitForFunction(
+        () => {
+          const modal = document.getElementById("shortcutsModal");
+          return Boolean(modal && modal.hidden === false);
+        },
+        null,
+        { timeout: 30000 }
+      );
+      await page.waitForFunction(() => document.activeElement?.id === "shortcutsCloseBtn", null, { timeout: 10000 });
+      for (let i = 0; i < 6; i += 1) {
+        await page.keyboard.press("Tab");
+      }
+      await page.waitForFunction(
+        () => {
+          const modal = document.getElementById("shortcutsModal");
+          return Boolean(modal && modal.contains(document.activeElement));
+        },
+        null,
+        { timeout: 10000 }
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.getElementById("shortcutsModal")?.hidden === true, null, { timeout: 30000 });
+      await page.waitForFunction(() => document.activeElement?.id === "shortcutsBtn", null, { timeout: 10000 });
+
+      await page.locator("#curatorBtn").focus();
+      await page.click("#curatorBtn");
+      await page.waitForFunction(() => document.getElementById("curatorModal")?.hidden === false, null, { timeout: 30000 });
+      await page.keyboard.down("Shift");
+      await page.keyboard.press("Tab");
+      await page.keyboard.up("Shift");
+      await page.waitForFunction(
+        () => Boolean(document.getElementById("curatorModal")?.contains(document.activeElement)),
+        null,
+        { timeout: 10000 }
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.getElementById("curatorModal")?.hidden === true, null, { timeout: 30000 });
+      await page.waitForFunction(() => document.activeElement?.id === "curatorBtn", null, { timeout: 10000 });
+
+      await page.locator("#moderationBtn").focus();
+      await page.click("#moderationBtn");
+      await page.waitForFunction(() => document.getElementById("moderationModal")?.hidden === false, null, { timeout: 30000 });
+      await page.keyboard.down("Shift");
+      await page.keyboard.press("Tab");
+      await page.keyboard.up("Shift");
+      await page.waitForFunction(
+        () => Boolean(document.getElementById("moderationModal")?.contains(document.activeElement)),
+        null,
+        { timeout: 10000 }
+      );
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.getElementById("moderationModal")?.hidden === true, null, { timeout: 30000 });
+      await page.waitForFunction(() => document.activeElement?.id === "moderationBtn", null, { timeout: 10000 });
+
       await page.keyboard.press("h");
       await page.waitForSelector(".hotspot-dot.is-hidden", { timeout: 30000 });
       await page.keyboard.press("h");

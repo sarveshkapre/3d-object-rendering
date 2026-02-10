@@ -264,9 +264,12 @@ const state = {
   moderationRecentDecisions: [],
   moderationRevisions: [],
   shortcutsOpen: false,
+  shortcutsReturnFocus: null,
   webglRecoveryOpen: false,
   webglRecoveryPane: null,
   webglRecoveryReturnFocus: null,
+  curatorReturnFocus: null,
+  moderationReturnFocus: null,
   previousTourState: {
     active: false,
     index: null
@@ -1679,12 +1682,13 @@ function setModerationOpen(open, options = {}) {
   elements.moderationModal.hidden = !state.moderationOpen;
 
   if (state.moderationOpen) {
+    state.moderationReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     haltShowcaseForManualInteraction("open_moderation");
     if (state.shortcutsOpen) {
-      setShortcutsOpen(false, { skipTrack: true });
+      setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.curatorOpen) {
-      setCuratorOpen(false, { skipTrack: true });
+      setCuratorOpen(false, { skipTrack: true, returnFocus: false });
     }
 
     state.moderationArtifactId = state.currentArtifactId ?? state.moderationArtifactId ?? artifacts[0]?.id ?? null;
@@ -1693,8 +1697,12 @@ function setModerationOpen(open, options = {}) {
     elements.moderationReasonInput.value = state.moderationReason;
     void loadModerationData();
     elements.moderationCloseBtn.focus();
+  } else if (options.returnFocus !== false) {
+    const returnTo = state.moderationReturnFocus;
+    state.moderationReturnFocus = null;
+    restoreFocus(returnTo, elements.moderationBtn);
   } else {
-    elements.moderationBtn.focus();
+    state.moderationReturnFocus = null;
   }
 
   if (!options.skipTrack) {
@@ -2385,12 +2393,13 @@ function setCuratorOpen(open, options = {}) {
   elements.curatorModal.hidden = !state.curatorOpen;
 
   if (state.curatorOpen) {
+    state.curatorReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     haltShowcaseForManualInteraction("open_curator");
     if (state.shortcutsOpen) {
-      setShortcutsOpen(false, { skipTrack: true });
+      setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.moderationOpen) {
-      setModerationOpen(false, { skipTrack: true });
+      setModerationOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (!state.curatorArtifactId) {
       state.curatorArtifactId = state.currentArtifactId ?? artifacts[0]?.id ?? null;
@@ -2399,8 +2408,12 @@ function setCuratorOpen(open, options = {}) {
     populateCuratorForm(state.curatorArtifactId);
     refreshCuratorValidation();
     elements.curatorArtifactSelect.focus();
+  } else if (options.returnFocus !== false) {
+    const returnTo = state.curatorReturnFocus;
+    state.curatorReturnFocus = null;
+    restoreFocus(returnTo, elements.curatorBtn);
   } else {
-    elements.curatorBtn.focus();
+    state.curatorReturnFocus = null;
   }
 
   if (!options.skipTrack) {
@@ -2663,16 +2676,21 @@ function setShortcutsOpen(open, options = {}) {
   elements.shortcutsModal.hidden = !state.shortcutsOpen;
 
   if (state.shortcutsOpen) {
+    state.shortcutsReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     haltShowcaseForManualInteraction("open_shortcuts");
     if (state.curatorOpen) {
-      setCuratorOpen(false, { skipTrack: true });
+      setCuratorOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.moderationOpen) {
-      setModerationOpen(false, { skipTrack: true });
+      setModerationOpen(false, { skipTrack: true, returnFocus: false });
     }
     elements.shortcutsCloseBtn.focus();
+  } else if (options.returnFocus !== false) {
+    const returnTo = state.shortcutsReturnFocus;
+    state.shortcutsReturnFocus = null;
+    restoreFocus(returnTo, elements.shortcutsBtn);
   } else {
-    elements.shortcutsBtn.focus();
+    state.shortcutsReturnFocus = null;
   }
 
   if (!options.skipTrack) {
@@ -2691,13 +2709,13 @@ function setWebglRecoveryOpen(open, options = {}) {
   if (state.webglRecoveryOpen) {
     haltShowcaseForManualInteraction("webgl_recovery_open");
     if (state.curatorOpen) {
-      setCuratorOpen(false, { skipTrack: true });
+      setCuratorOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.moderationOpen) {
-      setModerationOpen(false, { skipTrack: true });
+      setModerationOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.shortcutsOpen) {
-      setShortcutsOpen(false, { skipTrack: true });
+      setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
     }
 
     state.webglRecoveryReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -3384,13 +3402,13 @@ function setShowcaseActive(enabled, options = {}) {
   if (state.showcaseActive) {
     state.showcasePreviousAutoplay = state.tourAutoPlay;
     if (state.curatorOpen) {
-      setCuratorOpen(false, { skipTrack: true });
+      setCuratorOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.moderationOpen) {
-      setModerationOpen(false, { skipTrack: true });
+      setModerationOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.shortcutsOpen) {
-      setShortcutsOpen(false, { skipTrack: true });
+      setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
     }
     if (state.compareEnabled) {
       state.compareEnabled = false;
@@ -3606,6 +3624,99 @@ function focusSearchInput(options = {}) {
   return !wasFocused;
 }
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function getFocusableElements(container) {
+  if (!container) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter((node) => {
+    if (!(node instanceof HTMLElement)) {
+      return false;
+    }
+    if (node.getAttribute("aria-hidden") === "true") {
+      return false;
+    }
+    if (node.hidden) {
+      return false;
+    }
+    // Avoid trapping focus on elements that are not actually rendered.
+    if (typeof node.getClientRects === "function" && node.getClientRects().length === 0) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function trapFocusWithin(container, event) {
+  if (!(event instanceof KeyboardEvent) || event.key !== "Tab") {
+    return;
+  }
+
+  const focusables = getFocusableElements(container);
+  if (!focusables.length) {
+    event.preventDefault();
+    return;
+  }
+
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const inContainer = active ? container.contains(active) : false;
+  const index = inContainer ? focusables.indexOf(active) : -1;
+
+  const nextIndex = event.shiftKey ? index - 1 : index + 1;
+  const wrappedIndex = (() => {
+    if (index === -1) {
+      return event.shiftKey ? focusables.length - 1 : 0;
+    }
+    if (nextIndex < 0) {
+      return focusables.length - 1;
+    }
+    if (nextIndex >= focusables.length) {
+      return 0;
+    }
+    return nextIndex;
+  })();
+
+  event.preventDefault();
+  focusables[wrappedIndex]?.focus();
+}
+
+function getOpenModalFocusContainer() {
+  if (state.webglRecoveryOpen) {
+    return elements.webglRecoveryModal?.querySelector(".shortcuts-card") ?? null;
+  }
+  if (state.moderationOpen) {
+    return elements.moderationModal?.querySelector(".shortcuts-card") ?? null;
+  }
+  if (state.curatorOpen) {
+    return elements.curatorForm ?? null;
+  }
+  if (state.shortcutsOpen) {
+    return elements.shortcutsModal?.querySelector(".shortcuts-card") ?? null;
+  }
+  return null;
+}
+
+function restoreFocus(returnTo, fallback) {
+  if (returnTo && typeof returnTo.focus === "function" && returnTo.isConnected) {
+    returnTo.focus();
+    return true;
+  }
+  if (fallback && typeof fallback.focus === "function") {
+    fallback.focus();
+    return true;
+  }
+  return false;
+}
+
 function handleKeydown(event) {
   touchIdleReset();
   const normalizedKey = event.key.toLowerCase();
@@ -3614,16 +3725,16 @@ function handleKeydown(event) {
     event.preventDefault();
     haltShowcaseForManualInteraction("keyboard_search");
     if (state.shortcutsOpen) {
-      setShortcutsOpen(false, { source: "keyboard", skipTrack: true });
+      setShortcutsOpen(false, { source: "keyboard", skipTrack: true, returnFocus: false });
     }
     if (state.webglRecoveryOpen) {
       setWebglRecoveryOpen(false, { source: "keyboard" });
     }
     if (state.curatorOpen) {
-      setCuratorOpen(false, { source: "keyboard", skipTrack: true });
+      setCuratorOpen(false, { source: "keyboard", skipTrack: true, returnFocus: false });
     }
     if (state.moderationOpen) {
-      setModerationOpen(false, { source: "keyboard", skipTrack: true });
+      setModerationOpen(false, { source: "keyboard", skipTrack: true, returnFocus: false });
     }
 
     const focused = focusSearchInput({ behavior: "instant" });
@@ -3634,6 +3745,14 @@ function handleKeydown(event) {
       results: getVisibleArtifacts().length
     });
     return;
+  }
+
+  if (event.key === "Tab") {
+    const container = getOpenModalFocusContainer();
+    if (container) {
+      trapFocusWithin(container, event);
+      return;
+    }
   }
 
   if (event.key === "Escape") {
@@ -3924,13 +4043,13 @@ async function resetViewerForIdle() {
   }
 
   if (state.curatorOpen) {
-    setCuratorOpen(false, { skipTrack: true });
+    setCuratorOpen(false, { skipTrack: true, returnFocus: false });
   }
   if (state.moderationOpen) {
-    setModerationOpen(false, { skipTrack: true });
+    setModerationOpen(false, { skipTrack: true, returnFocus: false });
   }
   if (state.shortcutsOpen) {
-    setShortcutsOpen(false, { skipTrack: true });
+    setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
   }
 
   if (state.showcaseActive) {

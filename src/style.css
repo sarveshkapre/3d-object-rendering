@@ -9,6 +9,7 @@
   --accent-soft: rgba(184, 106, 59, 0.18);
   --glass: rgba(255, 255, 255, 0.68);
   --shadow: 0 18px 54px rgba(51, 41, 35, 0.14);
+  --focus-ring: rgba(184, 106, 59, 0.72);
 }
 
 * {
@@ -39,6 +40,15 @@ mark.search-highlight {
   color: inherit;
   padding: 0 0.1em;
   border-radius: 4px;
+}
+
+:where(button, a):focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+:where(button, a):focus:not(:focus-visible) {
+  outline: none;
 }
 
 .app {

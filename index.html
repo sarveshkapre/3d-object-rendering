@@ -194,14 +194,21 @@
         </div>
 
         <div id="curatorModal" class="shortcuts-modal curator-modal" hidden>
-          <form id="curatorForm" class="shortcuts-card curator-card glass" aria-labelledby="curatorTitle">
+          <form
+            id="curatorForm"
+            class="shortcuts-card curator-card glass"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="curatorTitle"
+            aria-describedby="curatorNote"
+          >
             <div class="shortcuts-head">
               <h2 id="curatorTitle" class="shortcuts-title">Curator Editor</h2>
               <div class="curator-head-actions">
                 <button id="curatorCloseBtn" class="chip-btn" type="button" aria-label="Close curator editor">Close</button>
               </div>
             </div>
-            <p class="curator-note">Use a bearer admin token only when write protection is enabled on the API.</p>
+            <p id="curatorNote" class="curator-note">Use a bearer admin token only when write protection is enabled on the API.</p>
 
             <div class="curator-grid">
               <label class="curator-field">
@@ -267,14 +274,20 @@
         </div>
 
         <div id="moderationModal" class="shortcuts-modal curator-modal" hidden>
-          <div class="shortcuts-card curator-card glass" role="dialog" aria-modal="true" aria-labelledby="moderationTitle">
+          <div
+            class="shortcuts-card curator-card glass"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="moderationTitle"
+            aria-describedby="moderationNote"
+          >
             <div class="shortcuts-head">
               <h2 id="moderationTitle" class="shortcuts-title">Community Moderation</h2>
               <div class="curator-head-actions">
                 <button id="moderationCloseBtn" class="chip-btn" type="button" aria-label="Close moderation">Close</button>
               </div>
             </div>
-            <p class="curator-note">All curator submissions are anonymous and reviewed here before going live.</p>
+            <p id="moderationNote" class="curator-note">All curator submissions are anonymous and reviewed here before going live.</p>
 
             <div class="curator-grid">
               <div class="curator-row">

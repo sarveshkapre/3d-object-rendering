@@ -12,8 +12,9 @@
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
-- 2026-02-10 | Add `smoke:preview:full` to validate production `dist/` + `/api` proxy in one command | Maintainers need a repeatable full-stack verification path that exercises the real `preview:full` server | `npm run smoke:preview:full` | (pending) | high | trusted
-- 2026-02-10 | Run `smoke:api` in CI | Unit tests do not guarantee the API boots and serves real HTTP responses; a fast smoke step catches regressions early | `npm run smoke:api` | (pending) | high | trusted
+- 2026-02-10 | Add `smoke:preview:full` to validate production `dist/` + `/api` proxy in one command | Maintainers need a repeatable full-stack verification path that exercises the real `preview:full` server | `npm run smoke:preview:full` | c489db5 | high | trusted
+- 2026-02-10 | Run `smoke:api` in CI | Unit tests do not guarantee the API boots and serves real HTTP responses; a fast smoke step catches regressions early | `npm run smoke:api` | c489db5 | high | trusted
+- 2026-02-10 | Improve overlay accessibility (focus trap + focus restore + visible focus rings) and add kiosk regression checks | Kiosk visitors rely on keyboard-only navigation; dialogs must not leak focus or strand operators after close | `npm run smoke:kiosk`, `npm run build` | (pending) | high | trusted
 - 2026-02-09 | Add WebGL context loss recovery overlay + stop rendering on loss | Kiosk sessions can freeze silently on context loss; prompt for reload and avoid noisy render loops | `npm run build`, `npm run smoke:kiosk` | b3b3f41 | high | trusted
 - 2026-02-09 | Add `preview:full` to serve `dist/` with `/api` proxy | Validating production builds requires same-origin API; a local proxy server makes this a one-command workflow | `npm run build` + preview:full smoke curl | 91e891a | high | trusted
 - 2026-02-09 | Make API retention configurable and allow disabling raw event storage | Keep long-running kiosk stores bounded and reduce disk churn while preserving counters | `npm test`, `npm run smoke:api` | 534fb7d | high | trusted
@@ -52,6 +53,8 @@
 - 2026-02-10 | `npm test` | `pass 7` | pass
 - 2026-02-10 | `npm run smoke:api` | health + ingest + counters ok | pass
 - 2026-02-10 | `npm run smoke:preview:full` | `preview / ok`, `preview /api/health ok` | pass
+- 2026-02-10 | `npm run build` | vite build ok | pass
+- 2026-02-10 | `npm run smoke:kiosk` | `smoke:kiosk ok` | pass
 - 2026-02-09 | `npm test` | `pass 3` | pass
 - 2026-02-09 | `npm run smoke:api` | health + ingest + counters ok | pass
 - 2026-02-09 | `npm run build` | vite build ok | pass
