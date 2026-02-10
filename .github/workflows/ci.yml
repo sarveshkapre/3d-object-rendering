@@ -25,6 +25,8 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Smoke API
+        run: npm run smoke:api
+
       - name: Build
         run: npm run build
-

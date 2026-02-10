@@ -11,6 +11,7 @@
     "assets:check": "node scripts/check-assets.mjs",
     "smoke:api": "node scripts/smoke-api.mjs",
     "smoke:kiosk": "node scripts/smoke-kiosk.mjs",
+    "smoke:preview:full": "npm run build && node scripts/smoke-preview-full-stack.mjs",
     "test": "node --test",
     "build": "npm run assets:check && vite build",
     "preview": "vite preview",

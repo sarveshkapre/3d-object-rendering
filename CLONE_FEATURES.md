@@ -7,14 +7,20 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `accessibility-audit` (P2): Tighten overlay and modal accessibility (focus trap, focus restore, aria attributes, keyboard reachability) and add regression checks for keyboard-only kiosk flows.
-- [ ] `smoke-preview-full-stack` (P2): Add a quick smoke path that boots `preview:full` and validates both `/` and `/api/health` respond (future CI optional).
+- [ ] `accessibility-audit` (P1, selected): Tighten overlay/modal accessibility (focus trap + focus restore, better dialog semantics, visible keyboard focus ring) and extend `smoke:kiosk` with keyboard-only regression checks.
+- [ ] `smoke-preview-full-stack` (P1, selected): Add a smoke command that boots `preview:full` and validates both `/` and `/api/health` respond before shipping builds.
+- [ ] `ci-smoke-api` (P2, selected): Run `npm run smoke:api` in GitHub Actions to catch backend regressions that unit tests miss (real process + HTTP calls).
+- [ ] `reduced-motion` (P3): Respect `prefers-reduced-motion` by disabling non-essential animations/transitions (panels, pings, modals) for accessibility reviews.
 - [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
 - [ ] `api-store-migrations` (P3): Add a `schemaVersion` field + migration helper so future store shape changes remain backward compatible.
 - [ ] `viewer-error-telemetry` (P3): Capture and surface viewer load/render errors in the insights panel so kiosks expose failures without opening devtools.
+- [ ] `ci-node-matrix` (P3): Expand CI to run tests/build on Node 20 and the current LTS to avoid subtle runtime drift.
+- [ ] `diagnose-webgl-fallback` (P3): Add a small UI badge and help copy when WebGL is unavailable so docents understand the reduced rendering mode.
 
 ## Implemented
+- 2026-02-10 · `smoke-preview-full-stack`: Added `npm run smoke:preview:full` to build + boot `preview:full` and verify both `/` and `/api/health` respond so maintainers can validate production builds end-to-end. Evidence: `scripts/smoke-preview-full-stack.mjs`, `package.json`, `README.md`, `npm run smoke:preview:full`.
+- 2026-02-10 · `ci-smoke-api`: Added `npm run smoke:api` as a GitHub Actions step to catch backend process+HTTP regressions beyond unit tests. Evidence: `.github/workflows/ci.yml`, `scripts/smoke-api.mjs`, `npm run smoke:api`.
 - 2026-02-09 · `webgl-context-loss-recovery`: Detects WebGL context loss on both canvases, stops rendering, and shows a recovery overlay with reload options so kiosk sessions do not freeze silently. Evidence: `index.html`, `src/main.js`, `src/viewer.js`, `src/style.css`, `npm run smoke:kiosk`, `npm run build`.
 - 2026-02-09 · `preview-full-stack`: Added `npm run preview:full` to serve `dist/` and proxy `/api/*` to the local API so maintainers can validate production builds without relying on Vite dev proxying. Evidence: `scripts/preview-full-stack.mjs`, `package.json`, `README.md`.
 - 2026-02-09 · `artifact-data-validate`: Added catalog validation to `npm test` (unique ids, valid categories, hotspot/tour consistency) to prevent runtime surprises. Evidence: `src/data/artifacts.test.js`, `npm test`.
