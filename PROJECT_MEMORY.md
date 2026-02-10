@@ -12,6 +12,7 @@
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
+- 2026-02-10 | Expand CI to Node 20 + current LTS via a node-version matrix | Keep runtime drift visible early (esp. `fetch`, Node test runner, and ESM semantics changes) without waiting for production incidents | GitHub Actions workflow `ci` run `21853628800` passed | 02cb6c6 | high | trusted
 - 2026-02-10 | Add in-app diagnostics (renderer status + recent client errors) and a copyable export in the insights panel | Kiosk operators need a devtools-free way to report failures with concrete evidence and understand when WebGL has fallen back | `npm test`, `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
 - 2026-02-10 | Honor `prefers-reduced-motion` by reducing UI animation and shortening camera/tour transitions | Accessibility reviews expect reduced motion support; shortening camera moves prevents nausea while keeping narrative UX intact | `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
 - 2026-02-10 | Add `smoke:preview:full` to validate production `dist/` + `/api` proxy in one command | Maintainers need a repeatable full-stack verification path that exercises the real `preview:full` server | `npm run smoke:preview:full` | c489db5 | high | trusted
@@ -58,6 +59,7 @@
 - 2026-02-10 | `npm run smoke:preview:full` | `preview / ok`, `preview /api/health ok` | pass
 - 2026-02-10 | `npm run build` | vite build ok | pass
 - 2026-02-10 | `npm run smoke:kiosk` | `smoke:kiosk ok` | pass
+- 2026-02-10 | GitHub Actions workflow `ci` | run `21853628800` passed | pass
 - 2026-02-10 | GitHub Actions workflow `ci` | run `21847213360` passed | pass
 - 2026-02-09 | `npm test` | `pass 3` | pass
 - 2026-02-09 | `npm run smoke:api` | health + ingest + counters ok | pass
