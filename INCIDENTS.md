@@ -21,3 +21,13 @@
 - Evidence: `KEEP_SMOKE_ARTIFACTS=1 npm run smoke:kiosk` passed after fix.
 - Commit: 3735822
 - Confidence: high
+
+- Date: 2026-02-10
+- Trigger: Automation attempted to stage and commit changes using concurrent git commands.
+- Impact: `git commit` failed with `.git/index.lock` and blocked shipping until commands were re-run.
+- Root Cause: Git uses an index lock to serialize writes; running `git add` and `git commit` concurrently causes a lock collision.
+- Fix: Re-ran git operations sequentially (stage, then commit, then push).
+- Prevention Rule: Never parallelize git commands; keep `git add` / `git commit` / `git push` serialized in automation.
+- Evidence: Error `fatal: Unable to create '.git/index.lock': File exists`, followed by a successful sequential commit and push.
+- Commit: 00824ef
+- Confidence: high

@@ -7,15 +7,17 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `reduced-motion` (P3): Respect `prefers-reduced-motion` by disabling non-essential animations/transitions (panels, pings, modals) for accessibility reviews.
 - [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
 - [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
 - [ ] `api-store-migrations` (P3): Add a `schemaVersion` field + migration helper so future store shape changes remain backward compatible.
-- [ ] `viewer-error-telemetry` (P3): Capture and surface viewer load/render errors in the insights panel so kiosks expose failures without opening devtools.
-- [ ] `ci-node-matrix` (P3): Expand CI to run tests/build on Node 20 and the current LTS to avoid subtle runtime drift.
-- [ ] `diagnose-webgl-fallback` (P3): Add a small UI badge and help copy when WebGL is unavailable so docents understand the reduced rendering mode.
+- [ ] `viewer-render-throttle` (P3): Pause/slow the render loop when the tab is hidden or when no interaction is happening to reduce kiosk thermals.
+- [ ] `viewer-share-qr` (P3): Add an optional QR code in the Share flow so kiosk visitors can pick up the deep link on their phone without clipboard access.
 
 ## Implemented
+- 2026-02-10 · `viewer-error-telemetry`: Captured global runtime errors/unhandled rejections and surfaced them inside the insights panel with a copyable diagnostics export so kiosk staff can report failures without devtools. Evidence: `src/main.js`, `src/style.css`, `npm test`, `npm run build`, `npm run smoke:kiosk`.
+- 2026-02-10 · `diagnose-webgl-fallback`: Added a persistent "3D Off" badge + modal that explains fallback mode when WebGL is unavailable, plus in-insights help copy. Evidence: `index.html`, `src/main.js`, `src/style.css`, `npm run build`.
+- 2026-02-10 · `reduced-motion`: Honored `prefers-reduced-motion` by reducing UI motion via CSS and shortening viewer camera animations to immediate transitions. Evidence: `src/style.css`, `src/viewer.js`, `src/main.js`, `npm run build`.
+- 2026-02-10 · `ci-node-matrix`: Expanded GitHub Actions CI to run on Node 20 and current LTS to catch runtime drift earlier. Evidence: `.github/workflows/ci.yml`.
 - 2026-02-10 · `accessibility-audit`: Added consistent keyboard focus rings, improved dialog semantics, and implemented focus trap + focus restore for overlays; extended kiosk smoke to assert focus stays within modals and returns to the opener. Evidence: `index.html`, `src/style.css`, `src/main.js`, `scripts/smoke-kiosk.mjs`, `npm run smoke:kiosk`, `npm run build`.
 - 2026-02-10 · `smoke-preview-full-stack`: Added `npm run smoke:preview:full` to build + boot `preview:full` and verify both `/` and `/api/health` respond so maintainers can validate production builds end-to-end. Evidence: `scripts/smoke-preview-full-stack.mjs`, `package.json`, `README.md`, `npm run smoke:preview:full`.
 - 2026-02-10 · `ci-smoke-api`: Added `npm run smoke:api` as a GitHub Actions step to catch backend process+HTTP regressions beyond unit tests. Evidence: `.github/workflows/ci.yml`, `scripts/smoke-api.mjs`, `npm run smoke:api`.
@@ -69,6 +71,8 @@
 - Market scan (untrusted): Parity expectations for modern web-based 3D viewers include annotations/hotspots, shareable camera state, guided tours, environment/lighting controls, snapshot capture, diagnostics/inspectors, and optional AR entry points. Sources: https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://3d.si.edu/voyager-story-standalone , https://developer.chrome.com/blog/model-viewer-ar , https://doc.babylonjs.com/toolsAndResources/sandbox/ , https://sketchfab.com/developers/viewer
 - Market scan addendum (untrusted, 2026-02-09): WebGL context loss is a first-class failure mode that should be handled explicitly for kiosk stability; browser guidance recommends listening for `webglcontextlost` / `webglcontextrestored` and prompting for recovery. Sources: https://www.khronos.org/webgl/wiki/HandlingContextLost , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextlost_event , https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextrestored_event
 - Market scan addendum (untrusted, 2026-02-10): Modal dialogs in kiosk flows are expected to trap focus and restore it to the opener; WAI-ARIA Authoring Practices remains the baseline reference for dialog semantics and keyboard behavior. Sources: https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/ , https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
+- Market scan addendum (untrusted, 2026-02-10): Accessibility review checklists increasingly call out reduced motion (honor `prefers-reduced-motion`) and visible compatibility indicators when 3D rendering is unavailable. Sources: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion , https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API
+- Diagnostics are product UX for kiosks: surfacing renderer status and a short error log (plus a copyable export) helps docents report issues with evidence instead of vague "the model is blank" feedback.
 
 ## Notes
 - This file is maintained by the autonomous clone loop.

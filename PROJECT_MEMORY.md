@@ -12,6 +12,8 @@
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
+- 2026-02-10 | Add in-app diagnostics (renderer status + recent client errors) and a copyable export in the insights panel | Kiosk operators need a devtools-free way to report failures with concrete evidence and understand when WebGL has fallen back | `npm test`, `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
+- 2026-02-10 | Honor `prefers-reduced-motion` by reducing UI animation and shortening camera/tour transitions | Accessibility reviews expect reduced motion support; shortening camera moves prevents nausea while keeping narrative UX intact | `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
 - 2026-02-10 | Add `smoke:preview:full` to validate production `dist/` + `/api` proxy in one command | Maintainers need a repeatable full-stack verification path that exercises the real `preview:full` server | `npm run smoke:preview:full` | c489db5 | high | trusted
 - 2026-02-10 | Run `smoke:api` in CI | Unit tests do not guarantee the API boots and serves real HTTP responses; a fast smoke step catches regressions early | `npm run smoke:api` | c489db5 | high | trusted
 - 2026-02-10 | Improve overlay accessibility (focus trap + focus restore + visible focus rings) and add kiosk regression checks | Kiosk visitors rely on keyboard-only navigation; dialogs must not leak focus or strand operators after close | `npm run smoke:kiosk`, `npm run build` | 0422b22 | high | trusted
@@ -34,6 +36,7 @@
 ## Mistakes And Fixes
 - Template: YYYY-MM-DD | Issue | Root cause | Fix | Prevention rule | Commit | Confidence
 - 2026-02-09 | `hidden` overlays intercepted clicks in some browsers | `.shortcuts-modal { display: grid; }` overrode the UA `[hidden] { display: none; }` rule due to higher specificity | Add explicit `[hidden] { display: none !important; }` in app CSS | Always define an explicit `[hidden]` rule when using `hidden` for stateful overlays; cover with a browser smoke check | 3735822 | high
+- 2026-02-10 | `git commit` failed with `.git/index.lock` during automation | Ran git staging/commit commands concurrently, causing a lock collision | Re-run git operations sequentially | Never parallelize git commands; keep `git add` / `git commit` / `git push` serialized | 00824ef | high
 
 ## Known Risks
 - WebGL fallback mode positions hotspot dots heuristically (no camera projection) and exports placeholder snapshot imagery; consider surfacing a clearer UI badge and/or a dedicated "renderer unavailable" panel if this shows up in real deployments.
