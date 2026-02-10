@@ -50,6 +50,7 @@ export class ArtifactViewer {
     this.contextLost = false;
     this.running = false;
     this.rafId = null;
+    this.reducedMotion = false;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#ffffff");
@@ -725,7 +726,23 @@ export class ArtifactViewer {
     this._animateCameraTo(this.defaultView.position, this.defaultView.target, 950);
   }
 
+  setReducedMotion(enabled) {
+    this.reducedMotion = Boolean(enabled);
+    if (this.reducedMotion) {
+      this.cameraAnimation = null;
+    }
+  }
+
   _animateCameraTo(position, target, duration = 900) {
+    if (this.reducedMotion || !Number.isFinite(duration) || duration <= 0) {
+      this.cameraAnimation = null;
+      this.camera.position.copy(position);
+      this.controls.target.copy(target);
+      this.controls.update();
+      this._notifyCameraChange();
+      return;
+    }
+
     this.cameraAnimation = {
       fromPosition: this.camera.position.clone(),
       fromTarget: this.controls.target.clone(),

@@ -102,13 +102,23 @@
             <button id="resetBtn" class="icon-btn" title="Reset view" aria-label="Reset view">Reset</button>
             <button id="hotspotToggleBtn" class="icon-btn" title="Toggle hotspots" aria-label="Toggle hotspots">Hotspots</button>
             <button id="tourBtn" class="icon-btn" title="Start guided tour" aria-label="Start guided tour">Start Tour</button>
-            <button id="compareBtn" class="icon-btn" title="Toggle compare mode" aria-label="Toggle compare mode">Compare</button>
-            <button id="syncBtn" class="icon-btn" title="Toggle compare sync" aria-label="Toggle compare sync" hidden>Sync On</button>
-            <button id="presetBtn" class="icon-btn" title="Cycle visual preset" aria-label="Cycle visual preset">Preset: White</button>
-            <button id="lowLoadBtn" class="icon-btn" title="Toggle low load mode" aria-label="Toggle low load mode" aria-keyshortcuts="L">Low Load Off</button>
-            <button id="showcaseBtn" class="icon-btn" title="Toggle showcase mode" aria-label="Toggle showcase mode">Showcase Off</button>
-            <button id="curatorBtn" class="icon-btn" title="Open curator editor" aria-label="Open curator editor">Curator</button>
-            <button id="moderationBtn" class="icon-btn" title="Open moderation queue" aria-label="Open moderation queue">Moderation</button>
+	            <button id="compareBtn" class="icon-btn" title="Toggle compare mode" aria-label="Toggle compare mode">Compare</button>
+	            <button id="syncBtn" class="icon-btn" title="Toggle compare sync" aria-label="Toggle compare sync" hidden>Sync On</button>
+	            <button id="presetBtn" class="icon-btn" title="Cycle visual preset" aria-label="Cycle visual preset">Preset: White</button>
+	            <button
+	              id="rendererStatusBtn"
+	              class="icon-btn renderer-status-btn"
+	              title="3D rendering status"
+	              aria-label="3D rendering status"
+	              aria-controls="rendererStatusModal"
+	              hidden
+	            >
+	              3D Off
+	            </button>
+	            <button id="lowLoadBtn" class="icon-btn" title="Toggle low load mode" aria-label="Toggle low load mode" aria-keyshortcuts="L">Low Load Off</button>
+	            <button id="showcaseBtn" class="icon-btn" title="Toggle showcase mode" aria-label="Toggle showcase mode">Showcase Off</button>
+	            <button id="curatorBtn" class="icon-btn" title="Open curator editor" aria-label="Open curator editor">Curator</button>
+	            <button id="moderationBtn" class="icon-btn" title="Open moderation queue" aria-label="Open moderation queue">Moderation</button>
             <button id="shortcutsBtn" class="icon-btn" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">Shortcuts</button>
             <button id="fullscreenBtn" class="icon-btn" title="Fullscreen" aria-label="Fullscreen">Fullscreen</button>
             <button id="snapshotBtn" class="icon-btn" title="Download snapshot" aria-label="Download snapshot" aria-keyshortcuts="X">Snapshot</button>
@@ -152,27 +162,46 @@
           <div id="compareArtifactList" class="compare-list"></div>
         </aside>
 
-        <div id="webglRecoveryModal" class="shortcuts-modal webgl-recovery-modal" hidden>
-          <div class="shortcuts-card webgl-recovery-card glass" role="alertdialog" aria-modal="true" aria-labelledby="webglRecoveryTitle" aria-describedby="webglRecoveryMessage">
-            <div class="shortcuts-head">
-              <h2 id="webglRecoveryTitle" class="shortcuts-title">Rendering Interrupted</h2>
-              <button id="webglRecoveryCloseBtn" class="chip-btn" type="button" aria-label="Close rendering notice">Close</button>
-            </div>
-            <p id="webglRecoveryMessage" class="webgl-recovery-message">
-              WebGL rendering was interrupted. Reload the viewer to restore 3D rendering. You can also enable Low Load mode before reloading for kiosk stability.
-            </p>
-            <div class="webgl-recovery-actions">
-              <button id="webglRecoveryReloadBtn" class="chip-btn" type="button">Reload</button>
-              <button id="webglRecoveryLowReloadBtn" class="chip-btn" type="button">Low Load + Reload</button>
-            </div>
-          </div>
-        </div>
+	        <div id="webglRecoveryModal" class="shortcuts-modal webgl-recovery-modal" hidden>
+	          <div class="shortcuts-card webgl-recovery-card glass" role="alertdialog" aria-modal="true" aria-labelledby="webglRecoveryTitle" aria-describedby="webglRecoveryMessage">
+	            <div class="shortcuts-head">
+	              <h2 id="webglRecoveryTitle" class="shortcuts-title">Rendering Interrupted</h2>
+	              <button id="webglRecoveryCloseBtn" class="chip-btn" type="button" aria-label="Close rendering notice">Close</button>
+	            </div>
+	            <p id="webglRecoveryMessage" class="webgl-recovery-message">
+	              WebGL rendering was interrupted. Reload the viewer to restore 3D rendering. You can also enable Low Load mode before reloading for kiosk stability.
+	            </p>
+	            <div class="webgl-recovery-actions">
+	              <button id="webglRecoveryReloadBtn" class="chip-btn" type="button">Reload</button>
+	              <button id="webglRecoveryLowReloadBtn" class="chip-btn" type="button">Low Load + Reload</button>
+	            </div>
+	          </div>
+	        </div>
 
-        <div id="shortcutsModal" class="shortcuts-modal" hidden>
-          <div class="shortcuts-card glass" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
-            <div class="shortcuts-head">
-              <h2 id="shortcutsTitle" class="shortcuts-title">Keyboard Shortcuts</h2>
-              <button id="shortcutsCloseBtn" class="chip-btn" type="button" aria-label="Close shortcuts">Close</button>
+	        <div id="rendererStatusModal" class="shortcuts-modal renderer-status-modal" hidden>
+	          <div
+	            class="shortcuts-card renderer-status-card glass"
+	            role="dialog"
+	            aria-modal="true"
+	            aria-labelledby="rendererStatusTitle"
+	            aria-describedby="rendererStatusMessage"
+	          >
+	            <div class="shortcuts-head">
+	              <h2 id="rendererStatusTitle" class="shortcuts-title">3D Rendering Unavailable</h2>
+	              <button id="rendererStatusCloseBtn" class="chip-btn" type="button" aria-label="Close renderer status">Close</button>
+	            </div>
+	            <p id="rendererStatusMessage" class="renderer-status-message">
+	              WebGL could not be initialized, so the viewer is running in fallback mode.
+	            </p>
+	            <div id="rendererStatusDetails" class="renderer-status-details"></div>
+	          </div>
+	        </div>
+
+	        <div id="shortcutsModal" class="shortcuts-modal" hidden>
+	          <div class="shortcuts-card glass" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+	            <div class="shortcuts-head">
+	              <h2 id="shortcutsTitle" class="shortcuts-title">Keyboard Shortcuts</h2>
+	              <button id="shortcutsCloseBtn" class="chip-btn" type="button" aria-label="Close shortcuts">Close</button>
             </div>
             <div class="shortcuts-list">
               <p><kbd>T</kbd><span>Start or stop tour</span></p>

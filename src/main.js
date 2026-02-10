@@ -19,6 +19,10 @@ const MIN_IDLE_RESET_MS = 10000;
 const DEFAULT_IDLE_RESET_MS = 0;
 const SERVER_METRICS_REFRESH_INTERVAL_MS = 30000;
 const SERVER_METRICS_HISTORY_LIMIT = 24;
+const CLIENT_ERROR_LOG_LIMIT = 25;
+const CLIENT_ERROR_MESSAGE_MAX = 240;
+const CLIENT_ERROR_TRACK_LIMIT = 12;
+const CLIENT_ERROR_DEDUPE_WINDOW_MS = 1500;
 const INSIGHTS_METRIC_DEFINITIONS = [
   { key: "views", label: "Views" },
   { key: "hotspotOpens", label: "Hotspot Opens" },
@@ -30,6 +34,8 @@ const INSIGHTS_METRIC_DEFINITIONS = [
 ];
 let lastIdlePointerMoveTs = 0;
 let serverMetricsPollTimer = null;
+let clientErrorTelemetryBound = false;
+let reducedMotionListenerBound = false;
 
 function loadLowLoadPreference() {
   try {
@@ -61,6 +67,66 @@ function setPreferredLowLoadMode(enabled) {
   }
 }
 
+function sanitizeSingleLine(value, maxLen = CLIENT_ERROR_MESSAGE_MAX) {
+  const raw = typeof value === "string" ? value : value == null ? "" : String(value);
+  const compact = raw.replaceAll("\n", " ").replaceAll("\r", " ").replace(/\s+/g, " ").trim();
+  if (!Number.isFinite(maxLen) || maxLen <= 0) {
+    return compact;
+  }
+  return compact.length > maxLen ? `${compact.slice(0, Math.max(0, maxLen - 1))}…` : compact;
+}
+
+function formatThrownValue(value) {
+  if (value instanceof Error) {
+    const name = value.name ? String(value.name) : "Error";
+    const message = value.message ? String(value.message) : "";
+    return sanitizeSingleLine(message ? `${name}: ${message}` : name);
+  }
+  return sanitizeSingleLine(value);
+}
+
+function recordClientError(kind, message, options = {}) {
+  const safeKind = sanitizeSingleLine(kind, 40) || "error";
+  const safeMessage = sanitizeSingleLine(message) || "unknown";
+  const artifactId = options.artifactId ?? state.currentArtifactId ?? null;
+  const signature = `${safeKind}|${safeMessage}|${artifactId ?? ""}`;
+  const now = Date.now();
+
+  if (signature === state.clientErrorLastSignature && now - state.clientErrorLastAt < CLIENT_ERROR_DEDUPE_WINDOW_MS) {
+    return;
+  }
+
+  state.clientErrorLastSignature = signature;
+  state.clientErrorLastAt = now;
+
+  state.clientErrorSeq += 1;
+  state.clientErrorLog.push({
+    id: state.clientErrorSeq,
+    ts: now,
+    kind: safeKind,
+    message: safeMessage,
+    artifactId
+  });
+
+  if (state.clientErrorLog.length > CLIENT_ERROR_LOG_LIMIT) {
+    state.clientErrorLog.splice(0, state.clientErrorLog.length - CLIENT_ERROR_LOG_LIMIT);
+  }
+
+  if (state.clientErrorsTracked < CLIENT_ERROR_TRACK_LIMIT) {
+    state.clientErrorsTracked += 1;
+    trackEvent("client_error_captured", {
+      artifactId,
+      kind: safeKind,
+      message: safeMessage,
+      webgl: primaryViewer.webglAvailable ? "available" : "unavailable"
+    });
+  }
+
+  if (state.currentArtifactId) {
+    renderInsightsPanel();
+  }
+}
+
 function detectShortcutPlatform() {
   if (typeof navigator === "undefined") {
     return "other";
@@ -82,6 +148,14 @@ function detectShortcutPlatform() {
     return "linux";
   }
   return "other";
+}
+
+function getPrefersReducedMotion() {
+  try {
+    return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  } catch (error) {
+    return false;
+  }
 }
 
 const elements = {
@@ -193,7 +267,12 @@ const elements = {
   webglRecoveryCloseBtn: document.getElementById("webglRecoveryCloseBtn"),
   webglRecoveryMessage: document.getElementById("webglRecoveryMessage"),
   webglRecoveryReloadBtn: document.getElementById("webglRecoveryReloadBtn"),
-  webglRecoveryLowReloadBtn: document.getElementById("webglRecoveryLowReloadBtn")
+  webglRecoveryLowReloadBtn: document.getElementById("webglRecoveryLowReloadBtn"),
+  rendererStatusBtn: document.getElementById("rendererStatusBtn"),
+  rendererStatusModal: document.getElementById("rendererStatusModal"),
+  rendererStatusCloseBtn: document.getElementById("rendererStatusCloseBtn"),
+  rendererStatusMessage: document.getElementById("rendererStatusMessage"),
+  rendererStatusDetails: document.getElementById("rendererStatusDetails")
 };
 
 const parsedUrlState = parseUrlState();
@@ -242,6 +321,7 @@ const state = {
   showcaseRequested: parsedUrlState.showcaseActive,
   showcaseTimer: null,
   shortcutPlatform: detectShortcutPlatform(),
+  prefersReducedMotion: getPrefersReducedMotion(),
   showcasePreviousAutoplay: parsedUrlState.tourAutoPlay,
   sessionProgress: loadSessionProgress(),
   sessionMetrics: loadSessionMetrics(),
@@ -268,8 +348,15 @@ const state = {
   webglRecoveryOpen: false,
   webglRecoveryPane: null,
   webglRecoveryReturnFocus: null,
+  rendererStatusOpen: false,
+  rendererStatusReturnFocus: null,
   curatorReturnFocus: null,
   moderationReturnFocus: null,
+  clientErrorLog: [],
+  clientErrorSeq: 0,
+  clientErrorLastSignature: "",
+  clientErrorLastAt: 0,
+  clientErrorsTracked: 0,
   previousTourState: {
     active: false,
     index: null
@@ -456,6 +543,8 @@ const compareViewer = new ArtifactViewer({
 primaryViewer.setLowLoadMode(state.lowLoadMode);
 compareViewer.setLowLoadMode(state.lowLoadMode);
 compareViewer.setHotspotVisibility(false);
+primaryViewer.setReducedMotion(state.prefersReducedMotion);
+compareViewer.setReducedMotion(state.prefersReducedMotion);
 
 document.documentElement.dataset.webgl = primaryViewer.webglAvailable ? "available" : "unavailable";
 
@@ -475,6 +564,7 @@ function registerWebglRecoveryHandlers() {
         event.preventDefault();
         viewer.handleContextLost?.();
         document.documentElement.dataset.webgl = "unavailable";
+        updateRendererStatusUI();
         setWebglRecoveryOpen(true, { source: "webgl", pane });
         showToast("Rendering interrupted. Reload recommended.");
         trackEvent("webgl_context_lost", {
@@ -500,6 +590,9 @@ function registerWebglRecoveryHandlers() {
 }
 
 function initialize() {
+  registerReducedMotionListener();
+  registerClientErrorTelemetry();
+  updateRendererStatusUI();
   elements.searchInput.value = state.searchQuery;
   elements.sortSelect.value = state.sortMode;
   updateSearchShortcutHint();
@@ -539,6 +632,92 @@ function initialize() {
 
   handleResize();
   void bootstrap(artifactId);
+}
+
+function registerClientErrorTelemetry() {
+  if (clientErrorTelemetryBound) {
+    return;
+  }
+  clientErrorTelemetryBound = true;
+
+  window.addEventListener(
+    "error",
+    (event) => {
+      if (event instanceof ErrorEvent) {
+        const message = event.error ? formatThrownValue(event.error) : sanitizeSingleLine(event.message || "error");
+        recordClientError("window_error", message, { artifactId: state.currentArtifactId });
+        return;
+      }
+
+      const target = event && event.target ? event.target : null;
+      const tag = target && typeof target.tagName === "string" ? target.tagName.toLowerCase() : "resource";
+      recordClientError("resource_error", `Failed to load ${tag}`, { artifactId: state.currentArtifactId });
+    },
+    true
+  );
+
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event ? event.reason : null;
+    recordClientError("unhandled_rejection", formatThrownValue(reason), { artifactId: state.currentArtifactId });
+  });
+}
+
+function registerReducedMotionListener() {
+  if (reducedMotionListenerBound || !window.matchMedia) {
+    return;
+  }
+  reducedMotionListenerBound = true;
+
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const handler = (event) => {
+    state.prefersReducedMotion = Boolean(event.matches);
+    primaryViewer.setReducedMotion(state.prefersReducedMotion);
+    compareViewer.setReducedMotion(state.prefersReducedMotion);
+    renderInsightsPanel();
+    trackEvent("reduced_motion_changed", { enabled: state.prefersReducedMotion });
+  };
+
+  try {
+    media.addEventListener("change", handler);
+  } catch (error) {
+    media.addListener(handler);
+  }
+}
+
+function updateRendererStatusUI() {
+  if (!elements.rendererStatusBtn || !elements.rendererStatusModal) {
+    return;
+  }
+
+  const unavailable = !primaryViewer.webglAvailable;
+  elements.rendererStatusBtn.hidden = !unavailable;
+  elements.rendererStatusBtn.textContent = unavailable ? "3D Off" : "3D On";
+
+  if (unavailable) {
+    const reason = primaryViewer.webglUnavailableReason ? sanitizeSingleLine(primaryViewer.webglUnavailableReason, 160) : "unknown";
+    if (elements.rendererStatusMessage) {
+      elements.rendererStatusMessage.textContent = `WebGL could not be initialized, so the viewer is running in fallback mode (${reason}).`;
+    }
+    if (elements.rendererStatusDetails) {
+      elements.rendererStatusDetails.innerHTML = `
+        <strong>What still works</strong>
+        <ul>
+          <li>Gallery browsing, search, filters, share links, and session insights.</li>
+          <li>Hotspot list, story panel, guided tours, and curator/moderation tools.</li>
+        </ul>
+        <strong>What changes</strong>
+        <ul>
+          <li>3D rendering is disabled and the canvas will not display the model.</li>
+          <li>Snapshots export placeholder imagery.</li>
+        </ul>
+      `;
+    }
+    return;
+  }
+
+  if (state.rendererStatusOpen) {
+    setRendererStatusOpen(false, { source: "auto" });
+  }
 }
 
 async function bootstrap(artifactId) {
@@ -584,6 +763,26 @@ function bindEvents() {
       setWebglRecoveryOpen(false, { source: "overlay" });
     }
   });
+
+  if (elements.rendererStatusBtn) {
+    elements.rendererStatusBtn.addEventListener("click", () => {
+      setRendererStatusOpen(true, { source: "ui" });
+    });
+  }
+
+  if (elements.rendererStatusCloseBtn) {
+    elements.rendererStatusCloseBtn.addEventListener("click", () => {
+      setRendererStatusOpen(false, { source: "ui" });
+    });
+  }
+
+  if (elements.rendererStatusModal) {
+    elements.rendererStatusModal.addEventListener("click", (event) => {
+      if (event.target === elements.rendererStatusModal) {
+        setRendererStatusOpen(false, { source: "overlay" });
+      }
+    });
+  }
 
   elements.searchInput.addEventListener("input", () => {
     state.searchQuery = elements.searchInput.value.trim();
@@ -968,30 +1167,56 @@ function bindEvents() {
       return;
     }
 
-    const button = target.closest("button[data-action='copy-insights']");
+    const button = target.closest("button[data-action]");
     if (!(button instanceof HTMLButtonElement)) {
       return;
     }
 
+    const action = button.dataset.action;
     const artifactId = state.currentArtifactId;
-    const payload = formatInsightsExportText(artifactId);
+
+    if (action === "clear-errors") {
+      state.clientErrorLog = [];
+      state.clientErrorLastSignature = "";
+      state.clientErrorLastAt = 0;
+      renderInsightsPanel();
+      showToast("Diagnostics cleared");
+      trackEvent("diagnostics_cleared", { artifactId });
+      return;
+    }
+
+    const payload =
+      action === "copy-diagnostics"
+        ? formatDiagnosticsExportText(artifactId)
+        : action === "copy-insights"
+          ? formatInsightsExportText(artifactId)
+          : "";
+
     if (!payload) {
-      showToast("No metrics to copy");
+      showToast(action === "copy-diagnostics" ? "No diagnostics to copy" : "No metrics to copy");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(payload);
-      showToast("Metrics copied");
-      trackEvent("insights_export_copied", {
-        artifactId,
-        source: state.serverMetrics[artifactId] ? "server" : "session"
-      });
+      showToast(action === "copy-diagnostics" ? "Diagnostics copied" : "Metrics copied");
+      if (action === "copy-diagnostics") {
+        trackEvent("diagnostics_export_copied", {
+          artifactId,
+          webgl: primaryViewer.webglAvailable ? "available" : "unavailable"
+        });
+      } else {
+        trackEvent("insights_export_copied", {
+          artifactId,
+          source: state.serverMetrics[artifactId] ? "server" : "session"
+        });
+      }
     } catch (error) {
       showToast("Clipboard unavailable");
-      trackEvent("insights_export_failed", {
+      const reason = String(error && error.message ? error.message : "unknown");
+      trackEvent(action === "copy-diagnostics" ? "diagnostics_export_failed" : "insights_export_failed", {
         artifactId,
-        reason: String(error && error.message ? error.message : "unknown")
+        reason
       });
     }
   });
@@ -1180,9 +1405,11 @@ async function loadArtifact(artifactId, options = {}) {
     scheduleUrlUpdate();
   } catch (error) {
     showToast("Model failed to load. Retry from the loading overlay.");
+    recordClientError("artifact_load_failed", formatThrownValue(error), { artifactId });
     trackEvent("artifact_load_failed", {
       artifactId,
-      durationMs: Math.round(performance.now() - loadStartedAt)
+      durationMs: Math.round(performance.now() - loadStartedAt),
+      reason: sanitizeSingleLine(error && error.message ? error.message : "unknown", 160)
     });
     console.error(error);
     setLoadingOverlayError("primary", "Model failed to load.", artifactId);
@@ -1361,9 +1588,11 @@ async function loadCompareArtifact(artifactId, options = {}) {
     scheduleUrlUpdate();
   } catch (error) {
     showToast("Comparison artifact failed to load. Retry from the loading overlay.");
+    recordClientError("compare_load_failed", formatThrownValue(error), { artifactId });
     trackEvent("compare_load_failed", {
       compareArtifactId: artifactId,
-      durationMs: Math.round(performance.now() - loadStartedAt)
+      durationMs: Math.round(performance.now() - loadStartedAt),
+      reason: sanitizeSingleLine(error && error.message ? error.message : "unknown", 160)
     });
     console.error(error);
     setLoadingOverlayError("compare", "Comparison model failed to load.", artifactId);
@@ -2740,6 +2969,49 @@ function setWebglRecoveryOpen(open, options = {}) {
   });
 }
 
+function setRendererStatusOpen(open, options = {}) {
+  if (!elements.rendererStatusModal) {
+    return;
+  }
+
+  state.rendererStatusOpen = Boolean(open);
+  elements.rendererStatusModal.hidden = !state.rendererStatusOpen;
+
+  if (state.rendererStatusOpen) {
+    haltShowcaseForManualInteraction("renderer_status_open");
+    if (state.webglRecoveryOpen) {
+      setWebglRecoveryOpen(false, { source: "renderer_status" });
+    }
+    if (state.curatorOpen) {
+      setCuratorOpen(false, { skipTrack: true, returnFocus: false });
+    }
+    if (state.moderationOpen) {
+      setModerationOpen(false, { skipTrack: true, returnFocus: false });
+    }
+    if (state.shortcutsOpen) {
+      setShortcutsOpen(false, { skipTrack: true, returnFocus: false });
+    }
+
+    state.rendererStatusReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    updateRendererStatusUI();
+    elements.rendererStatusCloseBtn?.focus();
+  } else if (options.returnFocus !== false) {
+    const returnTo = state.rendererStatusReturnFocus;
+    state.rendererStatusReturnFocus = null;
+    restoreFocus(returnTo, elements.rendererStatusBtn);
+  } else {
+    state.rendererStatusReturnFocus = null;
+  }
+
+  if (!options.skipTrack) {
+    trackEvent("renderer_status_overlay_toggled", {
+      open: state.rendererStatusOpen,
+      webgl: primaryViewer.webglAvailable ? "available" : "unavailable",
+      source: options.source ?? "unknown"
+    });
+  }
+}
+
 function renderFilters() {
   elements.filterBar.innerHTML = "";
 
@@ -3057,9 +3329,44 @@ function renderInsightsPanel() {
         .join("")
     : '<li class="insights-top-item is-empty"><span>No compare pairings yet</span><strong>0</strong></li>';
 
+  const rendererStatusLabel = primaryViewer.webglAvailable ? "Available" : "Unavailable";
+  const rendererReason = !primaryViewer.webglAvailable && primaryViewer.webglUnavailableReason
+    ? String(primaryViewer.webglUnavailableReason)
+    : "";
+  const primaryLoadLabel = state.primaryLoadError ? "Error" : state.primaryLoading ? "Loading" : "OK";
+  const compareLoadLabel = !state.compareEnabled
+    ? "N/A"
+    : state.compareLoadError
+      ? "Error"
+      : state.compareLoading
+        ? "Loading"
+        : state.compareReady
+          ? "OK"
+          : "Pending";
+  const recentErrors = state.clientErrorLog.slice(-5).reverse();
+  const errorsMarkup = recentErrors.length
+    ? `<ol class="diagnostics-errors">
+        ${recentErrors
+          .map((entry) => {
+            const ts = new Date(entry.ts);
+            const timeLabel = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            return `<li><time datetime="${escapeHtml(ts.toISOString())}">${escapeHtml(timeLabel)}</time>${escapeHtml(
+              `${entry.kind}: ${entry.message}`
+            )}</li>`;
+          })
+          .join("")}
+      </ol>`
+    : '<p class="insights-empty">No client errors captured this session.</p>';
+
+  const fallbackHelp = !primaryViewer.webglAvailable
+    ? `<p class="insights-empty">Fallback mode keeps gallery, hotspots, tours, story, share, and CMS tools usable. 3D rendering is disabled and snapshots will contain placeholders.</p>`
+    : "";
+
   elements.insightsContent.innerHTML = `
     <div class="insights-actions">
       <button class="chip-btn" type="button" data-action="copy-insights">Copy metrics</button>
+      <button class="chip-btn" type="button" data-action="copy-diagnostics">Copy diagnostics</button>
+      ${state.clientErrorLog.length ? '<button class="chip-btn" type="button" data-action="clear-errors">Clear</button>' : ""}
     </div>
     <div class="insights-grid">
       ${metricItems
@@ -3097,6 +3404,19 @@ function renderInsightsPanel() {
       <section class="insights-top-card">
         <p class="insights-top-label">Top Compare Partners</p>
         <ol class="insights-top-list">${topCompareMarkup}</ol>
+      </section>
+      <section class="insights-top-card is-wide">
+        <p class="insights-top-label">Diagnostics</p>
+        <div class="diagnostics-grid">
+          <p class="diagnostics-item"><span>Renderer</span><strong>${escapeHtml(rendererStatusLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Reason</span><strong>${escapeHtml(rendererReason || "N/A")}</strong></p>
+          <p class="diagnostics-item"><span>Primary Load</span><strong>${escapeHtml(primaryLoadLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Compare Load</span><strong>${escapeHtml(compareLoadLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Reduced Motion</span><strong>${escapeHtml(state.prefersReducedMotion ? "On" : "Off")}</strong></p>
+          <p class="diagnostics-item"><span>Errors</span><strong>${state.clientErrorLog.length}</strong></p>
+        </div>
+        ${fallbackHelp}
+        ${errorsMarkup}
       </section>
     </div>
   `;
@@ -3144,6 +3464,44 @@ function formatInsightsExportText(artifactId) {
     lines.push("");
     lines.push("Top compare partners:");
     topPartners.forEach((line) => lines.push(`- ${line}`));
+  }
+
+  return lines.join("\n");
+}
+
+function formatDiagnosticsExportText(artifactId) {
+  const artifact = artifactId ? artifactMap.get(artifactId) : null;
+  const lines = [];
+  lines.push("Artifact Viewer · Diagnostics");
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  if (artifactId) {
+    lines.push(`Artifact: ${artifact?.title ?? artifactId} (${artifactId})`);
+  }
+  lines.push(`Renderer: ${primaryViewer.webglAvailable ? "available" : "unavailable"}`);
+  if (!primaryViewer.webglAvailable) {
+    lines.push(`Renderer reason: ${primaryViewer.webglUnavailableReason ?? "unknown"}`);
+  }
+  lines.push(`Reduced motion: ${state.prefersReducedMotion ? "on" : "off"}`);
+  lines.push(`Primary load: ${state.primaryLoadError ? "error" : state.primaryLoading ? "loading" : "ok"}`);
+  lines.push(
+    `Compare load: ${
+      !state.compareEnabled ? "n/a" : state.compareLoadError ? "error" : state.compareLoading ? "loading" : state.compareReady ? "ok" : "pending"
+    }`
+  );
+  lines.push(`Client errors captured: ${state.clientErrorLog.length}`);
+  lines.push("");
+
+  if (state.clientErrorLog.length) {
+    lines.push("Recent client errors:");
+    state.clientErrorLog
+      .slice(-20)
+      .forEach((entry) =>
+        lines.push(
+          `- ${new Date(entry.ts).toLocaleString()} | ${String(entry.kind)} | ${String(entry.message)}${entry.artifactId ? ` | ${entry.artifactId}` : ""}`
+        )
+      );
+  } else {
+    lines.push("No client errors captured this session.");
   }
 
   return lines.join("\n");
@@ -3613,7 +3971,9 @@ function focusSearchInput(options = {}) {
   const wasFocused = document.activeElement === input;
 
   if (typeof input.scrollIntoView === "function" && options.scroll !== false) {
-    input.scrollIntoView({ behavior: options.behavior ?? "smooth", block: "center" });
+    const requested = options.behavior ?? (state.prefersReducedMotion ? "auto" : "smooth");
+    const behavior = requested === "instant" ? "auto" : requested;
+    input.scrollIntoView({ behavior, block: "center" });
   }
 
   input.focus();
@@ -3693,6 +4053,9 @@ function getOpenModalFocusContainer() {
   if (state.webglRecoveryOpen) {
     return elements.webglRecoveryModal?.querySelector(".shortcuts-card") ?? null;
   }
+  if (state.rendererStatusOpen) {
+    return elements.rendererStatusModal?.querySelector(".shortcuts-card") ?? null;
+  }
   if (state.moderationOpen) {
     return elements.moderationModal?.querySelector(".shortcuts-card") ?? null;
   }
@@ -3730,6 +4093,9 @@ function handleKeydown(event) {
     if (state.webglRecoveryOpen) {
       setWebglRecoveryOpen(false, { source: "keyboard" });
     }
+    if (state.rendererStatusOpen) {
+      setRendererStatusOpen(false, { source: "keyboard" });
+    }
     if (state.curatorOpen) {
       setCuratorOpen(false, { source: "keyboard", skipTrack: true, returnFocus: false });
     }
@@ -3760,6 +4126,13 @@ function handleKeydown(event) {
       event.preventDefault();
       setWebglRecoveryOpen(false, { source: "keyboard" });
       trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_webgl_recovery" });
+      return;
+    }
+
+    if (state.rendererStatusOpen) {
+      event.preventDefault();
+      setRendererStatusOpen(false, { source: "keyboard" });
+      trackEvent("keyboard_shortcut_used", { key: "Escape", action: "close_renderer_status" });
       return;
     }
 
@@ -3826,6 +4199,10 @@ function handleKeydown(event) {
   }
 
   if (state.webglRecoveryOpen) {
+    return;
+  }
+
+  if (state.rendererStatusOpen) {
     return;
   }
 
