@@ -8,10 +8,13 @@
 - Backend: Node HTTP server (`server/index.js`) with JSON file store for analytics + CMS submissions/overrides/revisions.
 
 ## Open Problems
-- None urgent as of 2026-02-09; remaining work is mostly UX polish + hardening + automated smoke coverage.
+- None urgent as of 2026-02-11; highest remaining value is persistence hardening (`api-store-migrations`) and curator/moderation workflow polish.
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
+- 2026-02-11 | Add adaptive render throttling to `ArtifactViewer` so idle sessions reduce frame work | Artifact Viewer runs in kiosk loops where persistent full-rate rendering increases heat/power use without user benefit | `npm test`, `npm run build`, `npm run smoke:kiosk`, GitHub Actions run `21894489306` | 8e71063 | high | trusted
+- 2026-02-11 | Surface render-loop mode/throttle/frame counters in diagnostics and export output | Operators need to confirm whether throttling is active without devtools, and smoke automation should guard these diagnostics from regressions | `npm run smoke:kiosk`, `npm run smoke:preview:full`, `README.md` updates | 8e71063 | high | trusted
+- 2026-02-11 | Keep this cycle focused on render stability/performance over new surface-area features after bounded market scan | Market baseline emphasizes robust annotations/story/share/AR flows; reliable long-session responsiveness is a better near-term ROI than adding breadth | Sources in `CLONE_FEATURES.md` insights (`sketchfab`, `smithsonian voyager`, `modelviewer.dev`, `MDN Page Visibility`) | 8e71063 | medium | untrusted
 - 2026-02-10 | Expand CI to Node 20 + current LTS via a node-version matrix | Keep runtime drift visible early (esp. `fetch`, Node test runner, and ESM semantics changes) without waiting for production incidents | GitHub Actions workflow `ci` run `21853628800` passed | 02cb6c6 | high | trusted
 - 2026-02-10 | Add in-app diagnostics (renderer status + recent client errors) and a copyable export in the insights panel | Kiosk operators need a devtools-free way to report failures with concrete evidence and understand when WebGL has fallen back | `npm test`, `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
 - 2026-02-10 | Honor `prefers-reduced-motion` by reducing UI animation and shortening camera/tour transitions | Accessibility reviews expect reduced motion support; shortening camera moves prevents nausea while keeping narrative UX intact | `npm run build`, `npm run smoke:kiosk` | 00824ef | high | trusted
@@ -44,6 +47,12 @@
 - WebGL context loss recovery currently prompts for reload (no in-place renderer re-init); acceptable for kiosks, but consider implementing an in-app restart path if reload is operationally expensive.
 
 ## Next Prioritized Tasks
+- 2026-02-11 scoring (1-5; higher is better except risk where lower is better):
+  - `api-store-migrations`: impact 4, effort 3, strategic fit 4, differentiation 1, risk 2, confidence 3
+  - `model-diagnostics`: impact 3, effort 3, strategic fit 4, differentiation 2, risk 2, confidence 3
+  - `analytics-ingest-rate-guard`: impact 4, effort 3, strategic fit 4, differentiation 1, risk 3, confidence 3
+  - `insights-refresh-backoff`: impact 3, effort 2, strategic fit 4, differentiation 2, risk 1, confidence 4
+  - `viewer-share-qr`: impact 3, effort 3, strategic fit 4, differentiation 3, risk 2, confidence 3
 - 2026-02-09 scoring (1-5; higher is better except risk where lower is better):
   - `accessibility-audit`: impact 4, effort 3, strategic fit 5, differentiation 3, risk 2, confidence 3
   - `smoke-preview-full-stack`: impact 3, effort 1, strategic fit 4, differentiation 1, risk 1, confidence 3
@@ -54,6 +63,14 @@
 
 ## Verification Evidence
 - Template: YYYY-MM-DD | Command | Key output | Status (pass/fail)
+- 2026-02-11 | `gh issue list --limit 50 --state open --json number,title,author,labels,updatedAt` | `[]` (no open issues from owner/bots) | pass
+- 2026-02-11 | `gh run list --limit 10 --json databaseId,headBranch,headSha,name,status,conclusion,event,createdAt,updatedAt` | recent runs all success before cycle start | pass
+- 2026-02-11 | `npm test` | `pass 7` | pass
+- 2026-02-11 | `npm run build` | `assets:check ok`, `vite build ok` | pass
+- 2026-02-11 | `npm run smoke:api` | health + ingest + counters ok | pass
+- 2026-02-11 | `npm run smoke:preview:full` | `preview / ok`, `preview /api/health ok` | pass
+- 2026-02-11 | `npm run smoke:kiosk` | `smoke:kiosk ok` | pass
+- 2026-02-11 | `gh run watch 21894489306 --exit-status` | workflow `ci` passed on commit `8e71063` | pass
 - 2026-02-10 | `npm test` | `pass 7` | pass
 - 2026-02-10 | `npm run smoke:api` | health + ingest + counters ok | pass
 - 2026-02-10 | `npm run smoke:preview:full` | `preview / ok`, `preview /api/health ok` | pass
