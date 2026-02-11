@@ -10,6 +10,7 @@ Minimalist white-space 3D artifact experience with:
 - Optional idle reset (append `?idle=120`) that snaps back to the featured artifact/preset after inactivity
 - Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
 - Low load mode toggle (reduced device pixel ratio + shadows off) for kiosk stability on constrained hardware
+- Adaptive render throttling that slows viewer frame work after idle periods to reduce kiosk thermals while preserving immediate interaction wake-up
 - Respects `prefers-reduced-motion` (UI motion reduced and camera/tour transitions shortened) for accessibility reviews
 - Side-by-side compare mode with synchronized camera control
 - Compare mode remembers your last partner per artifact plus your sync toggle preference so kiosk docents can reopen it without reconfiguring pairings
@@ -24,7 +25,7 @@ Minimalist white-space 3D artifact experience with:
 - Keyboard shortcuts (`Cmd/Ctrl+K` focus search, `T` tour, `H` hotspots, `C` compare, `S` story/inspect, `A` autoplay, `P` preset, `M` showcase, arrows for tour steps)
 - Keyboard-friendly hotspot list with Arrow/Home/End navigation and Enter/Space activation so kiosks stay operable without a mouse
 - Live session insights panel (views, hotspot engagement, compare sessions, compare partner leaderboard, tour usage, shares) with auto-refreshing server metrics
-- Diagnostics in the insights panel (renderer status + recent client errors) with a copyable export so kiosks can report failures without devtools
+- Diagnostics in the insights panel (renderer status, render-loop mode/throttle stats, + recent client errors) with a copyable export so kiosks can report failures without devtools
 - Insights delta badges that show metric movement since the previous server poll
 - Insights sparkline mini-charts that show the last N server polls per metric for quick trend reading
 - Shortcut help overlay (`?` to open/close, `Esc` to dismiss)

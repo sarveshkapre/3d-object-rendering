@@ -7,13 +7,24 @@
 - Gaps found during codebase exploration
 
 ## Candidate Features To Do
-- [ ] `model-diagnostics` (P3): Add a lightweight diagnostics panel (triangle/mesh counts, texture count/size, renderer capabilities hints) to shorten model QA loops.
-- [ ] `ar-entrypoint` (P3): Add an optional "View in AR" entry point for mobile devices (Android Scene Viewer, iOS Quick Look) when models are compatible.
-- [ ] `api-store-migrations` (P3): Add a `schemaVersion` field + migration helper so future store shape changes remain backward compatible.
-- [ ] `viewer-render-throttle` (P3): Pause/slow the render loop when the tab is hidden or when no interaction is happening to reduce kiosk thermals.
-- [ ] `viewer-share-qr` (P3): Add an optional QR code in the Share flow so kiosk visitors can pick up the deep link on their phone without clipboard access.
+- [ ] `api-store-migrations` (P2): Add `schemaVersion` with migration helpers so persisted store shape can evolve safely. Score: impact 4, effort 3, strategic fit 4, differentiation 1, risk 2, confidence 3.
+- [ ] `model-diagnostics` (P2): Add per-model diagnostics (mesh/material/texture counts and rough GPU hints) for curator QA. Score: impact 3, effort 3, strategic fit 4, differentiation 2, risk 2, confidence 3.
+- [ ] `viewer-share-qr` (P2): Optional QR code in share flow for kiosk-to-mobile handoff without clipboard dependency. Score: impact 3, effort 3, strategic fit 4, differentiation 3, risk 2, confidence 3.
+- [ ] `analytics-ingest-rate-guard` (P2): Add payload-size and burst guardrails to protect API under noisy clients. Score: impact 4, effort 3, strategic fit 4, differentiation 1, risk 3, confidence 3.
+- [ ] `insights-refresh-backoff` (P2): Add retry/backoff and stale-data badge for server metrics polling failures. Score: impact 3, effort 2, strategic fit 4, differentiation 2, risk 1, confidence 4.
+- [ ] `curator-draft-autosave` (P2): Persist in-progress curator form drafts locally to prevent accidental loss. Score: impact 3, effort 3, strategic fit 4, differentiation 2, risk 2, confidence 3.
+- [ ] `moderation-search-filter` (P2): Add queue filtering by artifact/status/reviewer note text for faster triage. Score: impact 3, effort 2, strategic fit 4, differentiation 2, risk 1, confidence 4.
+- [ ] `artifact-preload-next` (P3): Opportunistically preload likely-next artifact model in idle time to reduce perceived load latency. Score: impact 3, effort 4, strategic fit 3, differentiation 3, risk 3, confidence 2.
+- [ ] `tour-script-quality-check` (P3): Add data checks for tour captions/body quality and broken reference links. Score: impact 2, effort 2, strategic fit 3, differentiation 1, risk 1, confidence 4.
+- [ ] `compare-sync-smoothing` (P3): Smooth compare camera sync when toggling sync to reduce visual jump. Score: impact 2, effort 2, strategic fit 3, differentiation 2, risk 1, confidence 3.
+- [ ] `server-structured-logs` (P3): Add request correlation id + concise structured logs for kiosk support debugging. Score: impact 3, effort 2, strategic fit 3, differentiation 1, risk 2, confidence 3.
+- [ ] `ci-kiosk-smoke-gate` (P3): Add optional/weekly browser smoke CI lane to catch UI regressions before release windows. Score: impact 3, effort 3, strategic fit 3, differentiation 1, risk 2, confidence 3.
+- [ ] `asset-integrity-hash` (P3): Track known checksums for GLB assets to catch accidental drift or partial pulls. Score: impact 2, effort 2, strategic fit 3, differentiation 1, risk 1, confidence 3.
+- [ ] `ar-entrypoint` (P3): Add optional "View in AR" handoff (Scene Viewer / Quick Look) when assets meet format constraints. Score: impact 3, effort 4, strategic fit 3, differentiation 3, risk 3, confidence 2.
 
 ## Implemented
+- 2026-02-11 · `viewer-render-throttle`: Added adaptive render-loop throttling in `ArtifactViewer` so idle sessions slow frame work while preserving fast wake-up on interaction/camera motion; helps kiosk thermals without changing core UX. Evidence: `src/viewer.js`, `src/main.js`, `npm test`, `npm run build`, `npm run smoke:kiosk`.
+- 2026-02-11 · `render-throttle-diagnostics`: Added render-loop mode/throttle/frame counters to diagnostics panel and diagnostics export, and extended kiosk smoke to assert diagnostics wiring remains present. Evidence: `src/main.js`, `scripts/smoke-kiosk.mjs`, `README.md`, `npm run smoke:kiosk`, `npm run smoke:preview:full`.
 - 2026-02-10 · `viewer-error-telemetry`: Captured global runtime errors/unhandled rejections and surfaced them inside the insights panel with a copyable diagnostics export so kiosk staff can report failures without devtools. Evidence: `src/main.js`, `src/style.css`, `npm test`, `npm run build`, `npm run smoke:kiosk`.
 - 2026-02-10 · `diagnose-webgl-fallback`: Added a persistent "3D Off" badge + modal that explains fallback mode when WebGL is unavailable, plus in-insights help copy. Evidence: `index.html`, `src/main.js`, `src/style.css`, `npm run build`.
 - 2026-02-10 · `reduced-motion`: Honored `prefers-reduced-motion` by reducing UI motion via CSS and shortening viewer camera animations to immediate transitions. Evidence: `src/style.css`, `src/viewer.js`, `src/main.js`, `npm run build`.
@@ -73,6 +84,8 @@
 - Market scan addendum (untrusted, 2026-02-10): Modal dialogs in kiosk flows are expected to trap focus and restore it to the opener; WAI-ARIA Authoring Practices remains the baseline reference for dialog semantics and keyboard behavior. Sources: https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/ , https://developer.mozilla.org/en-US/docs/Web/CSS/:focus-visible
 - Market scan addendum (untrusted, 2026-02-10): Accessibility review checklists increasingly call out reduced motion (honor `prefers-reduced-motion`) and visible compatibility indicators when 3D rendering is unavailable. Sources: https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion , https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API
 - Diagnostics are product UX for kiosks: surfacing renderer status and a short error log (plus a copyable export) helps docents report issues with evidence instead of vague "the model is blank" feedback.
+- Market scan addendum (untrusted, 2026-02-11): Segment baselines continue to emphasize annotations/storytelling overlays, built-in sharing/screenshots, and AR handoff in web 3D viewers; this supports prioritizing reliability/performance work that keeps those flows responsive during long kiosk sessions. Sources: https://sketchfab.com/developers/viewer-functions , https://smithsonian.github.io/dpo-voyager/explorer/overview/ , https://modelviewer.dev/
+- Performance expectation addendum (untrusted, 2026-02-11): Browser guidance still recommends reducing background/hidden-tab work to avoid waste, reinforcing adaptive render throttling as a production baseline for unattended kiosk deployments. Source: https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
 
 ## Notes
 - This file is maintained by the autonomous clone loop.

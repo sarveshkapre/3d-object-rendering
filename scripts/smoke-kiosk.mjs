@@ -174,6 +174,14 @@ async function main() {
       );
 
       await page.waitForSelector(".hotspot-dot", { timeout: 60000, state: "attached" });
+      await page.waitForFunction(
+        () => {
+          const text = document.getElementById("insightsContent")?.textContent || "";
+          return text.includes("Render Loop") && text.includes("Throttle");
+        },
+        null,
+        { timeout: 30000 }
+      );
 
       // Accessibility regression: modal focus should be trapped and restored to the opener.
       await page.locator("#shortcutsBtn").focus();

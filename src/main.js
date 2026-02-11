@@ -513,6 +513,11 @@ const primaryViewer = new ArtifactViewer({
     },
     onCameraChange: () => {
       handleViewerCameraChange("primary");
+    },
+    onRenderModeChange: () => {
+      if (state.currentArtifactId) {
+        renderInsightsPanel();
+      }
     }
   }
 });
@@ -3266,6 +3271,19 @@ function renderStoryPanel() {
   `;
 }
 
+function formatRenderLoopMode(mode) {
+  if (mode === "idle") {
+    return "Idle";
+  }
+  if (mode === "fallback") {
+    return "Fallback";
+  }
+  if (mode === "stopped") {
+    return "Stopped";
+  }
+  return "Active";
+}
+
 function renderInsightsPanel() {
   if (!state.currentArtifactId) {
     elements.insightsContent.innerHTML = '<p class="insights-empty">Load an artifact to start session insights.</p>';
@@ -3333,6 +3351,10 @@ function renderInsightsPanel() {
   const rendererReason = !primaryViewer.webglAvailable && primaryViewer.webglUnavailableReason
     ? String(primaryViewer.webglUnavailableReason)
     : "";
+  const renderDiagnostics = primaryViewer.getRenderDiagnostics();
+  const renderLoopLabel = formatRenderLoopMode(renderDiagnostics.mode);
+  const renderThrottleLabel = renderDiagnostics.throttleEnabled ? "On" : "Off";
+  const frameStatsLabel = `${renderDiagnostics.renderedFrames}/${renderDiagnostics.skippedFrames}`;
   const primaryLoadLabel = state.primaryLoadError ? "Error" : state.primaryLoading ? "Loading" : "OK";
   const compareLoadLabel = !state.compareEnabled
     ? "N/A"
@@ -3410,6 +3432,9 @@ function renderInsightsPanel() {
         <div class="diagnostics-grid">
           <p class="diagnostics-item"><span>Renderer</span><strong>${escapeHtml(rendererStatusLabel)}</strong></p>
           <p class="diagnostics-item"><span>Reason</span><strong>${escapeHtml(rendererReason || "N/A")}</strong></p>
+          <p class="diagnostics-item"><span>Render Loop</span><strong>${escapeHtml(renderLoopLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Throttle</span><strong>${escapeHtml(renderThrottleLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Frames (R/S)</span><strong>${escapeHtml(frameStatsLabel)}</strong></p>
           <p class="diagnostics-item"><span>Primary Load</span><strong>${escapeHtml(primaryLoadLabel)}</strong></p>
           <p class="diagnostics-item"><span>Compare Load</span><strong>${escapeHtml(compareLoadLabel)}</strong></p>
           <p class="diagnostics-item"><span>Reduced Motion</span><strong>${escapeHtml(state.prefersReducedMotion ? "On" : "Off")}</strong></p>
@@ -3471,6 +3496,7 @@ function formatInsightsExportText(artifactId) {
 
 function formatDiagnosticsExportText(artifactId) {
   const artifact = artifactId ? artifactMap.get(artifactId) : null;
+  const renderDiagnostics = primaryViewer.getRenderDiagnostics();
   const lines = [];
   lines.push("Artifact Viewer · Diagnostics");
   lines.push(`Generated: ${new Date().toLocaleString()}`);
@@ -3481,6 +3507,10 @@ function formatDiagnosticsExportText(artifactId) {
   if (!primaryViewer.webglAvailable) {
     lines.push(`Renderer reason: ${primaryViewer.webglUnavailableReason ?? "unknown"}`);
   }
+  lines.push(`Render loop mode: ${formatRenderLoopMode(renderDiagnostics.mode).toLowerCase()}`);
+  lines.push(`Render throttle: ${renderDiagnostics.throttleEnabled ? "on" : "off"}`);
+  lines.push(`Frames rendered/skipped: ${renderDiagnostics.renderedFrames}/${renderDiagnostics.skippedFrames}`);
+  lines.push(`Idle policy: after ${renderDiagnostics.idleAfterMs}ms, tick every ${renderDiagnostics.idleFrameIntervalMs}ms`);
   lines.push(`Reduced motion: ${state.prefersReducedMotion ? "on" : "off"}`);
   lines.push(`Primary load: ${state.primaryLoadError ? "error" : state.primaryLoading ? "loading" : "ok"}`);
   lines.push(

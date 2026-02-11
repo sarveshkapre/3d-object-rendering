@@ -4,6 +4,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 const DEG2RAD = Math.PI / 180;
 const EPSILON = 0.001;
+const ACTIVE_FRAME_INTERVAL_MS = 1000 / 60;
+const IDLE_FRAME_INTERVAL_MS = 240;
+const IDLE_AFTER_MS = 2500;
+const CONTROLS_SETTLE_WINDOW_MS = 320;
 const VISUAL_PRESETS = {
   white: {
     background: "#ffffff",
@@ -51,6 +55,22 @@ export class ArtifactViewer {
     this.running = false;
     this.rafId = null;
     this.reducedMotion = false;
+    this.needsRender = true;
+    this.forceNextFrame = true;
+    this.renderThrottleEnabled = true;
+    this.activeFrameIntervalMs = ACTIVE_FRAME_INTERVAL_MS;
+    this.idleFrameIntervalMs = IDLE_FRAME_INTERVAL_MS;
+    this.idleAfterMs = IDLE_AFTER_MS;
+    this.controlsInteracting = false;
+    this.controlsSettlingUntil = 0;
+    this.lastActivityAt = this._now();
+    this.lastTickAt = 0;
+    this.renderMode = "active";
+    this.renderStats = {
+      renderedFrames: 0,
+      skippedFrames: 0,
+      idleFrames: 0
+    };
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color("#ffffff");
@@ -91,9 +111,19 @@ export class ArtifactViewer {
       this.controls.rotateSpeed = 0.8;
       this.controls.minDistance = 0.4;
       this.controls.maxDistance = 25;
+      this.controls.addEventListener("start", () => {
+        this.controlsInteracting = true;
+        this._markInteraction();
+      });
+      this.controls.addEventListener("end", () => {
+        this.controlsInteracting = false;
+        this._markInteraction();
+      });
       this.controls.addEventListener("change", () => {
+        this._markInteraction();
         this._notifyCameraChange();
       });
+      this._bindRenderActivityListeners();
     } else {
       // Stub control target so kiosk flows and narratives remain usable without WebGL.
       this.controls = {
@@ -149,6 +179,7 @@ export class ArtifactViewer {
     this.stop();
     this.renderer = null;
     this._positionStubHotspots();
+    this._emitRenderModeIfChanged();
   }
 
   stop() {
@@ -157,6 +188,7 @@ export class ArtifactViewer {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    this._emitRenderModeIfChanged();
   }
 
   captureSnapshotCanvas(options = {}) {
@@ -277,6 +309,7 @@ export class ArtifactViewer {
 
     this.renderer.setPixelRatio(this._getTargetPixelRatio());
     this.renderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
+    this._requestRender();
   }
 
   _notifyCameraChange() {
@@ -284,6 +317,68 @@ export class ArtifactViewer {
       return;
     }
     this.callbacks.onCameraChange?.();
+  }
+
+  _now() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  _bindRenderActivityListeners() {
+    if (!this.canvas || !this.renderer) {
+      return;
+    }
+    const markActivity = () => {
+      this._markInteraction();
+    };
+    this.canvas.addEventListener("pointerdown", markActivity, { passive: true });
+    this.canvas.addEventListener("wheel", markActivity, { passive: true });
+    this.canvas.addEventListener("touchstart", markActivity, { passive: true });
+    this.canvas.addEventListener("keydown", markActivity);
+  }
+
+  _markInteraction() {
+    const now = this._now();
+    this.lastActivityAt = now;
+    this.controlsSettlingUntil = now + CONTROLS_SETTLE_WINDOW_MS;
+    this.forceNextFrame = true;
+    this.needsRender = true;
+    this._emitRenderModeIfChanged();
+  }
+
+  _requestRender() {
+    this.forceNextFrame = true;
+    this.needsRender = true;
+  }
+
+  _getRenderMode() {
+    if (!this.renderer) {
+      return "fallback";
+    }
+    if (!this.running) {
+      return "stopped";
+    }
+    if (!this.renderThrottleEnabled) {
+      return "active";
+    }
+    const now = this._now();
+    const inIdleWindow =
+      !this.controlsInteracting &&
+      !this.cameraAnimation &&
+      now > this.controlsSettlingUntil &&
+      now - this.lastActivityAt >= this.idleAfterMs;
+    return inIdleWindow ? "idle" : "active";
+  }
+
+  _emitRenderModeIfChanged() {
+    const nextMode = this._getRenderMode();
+    if (this.renderMode === nextMode) {
+      return;
+    }
+    this.renderMode = nextMode;
+    this.callbacks.onRenderModeChange?.(nextMode);
   }
 
   _initLighting() {
@@ -353,6 +448,7 @@ export class ArtifactViewer {
       this.shadowMaterial.color.set(preset.shadow.color);
       this.shadowMaterial.opacity = preset.shadow.opacity;
     }
+    this._requestRender();
   }
 
   async loadArtifact(artifact) {
@@ -373,6 +469,7 @@ export class ArtifactViewer {
         hotspotCount: this.hotspots.length,
         webglAvailable: false
       });
+      this._requestRender();
       return;
     }
 
@@ -426,6 +523,7 @@ export class ArtifactViewer {
       artifact,
       hotspotCount: this.hotspots.length
     });
+    this._requestRender();
   }
 
   async _loadModel(url) {
@@ -712,6 +810,7 @@ export class ArtifactViewer {
       this.controls.target.copy(this.defaultView.target);
       this.controls.update();
       this._notifyCameraChange();
+      this._requestRender();
       return;
     }
 
@@ -720,6 +819,7 @@ export class ArtifactViewer {
       this.controls.target.copy(this.defaultView.target);
       this.controls.update();
       this._notifyCameraChange();
+      this._requestRender();
       return;
     }
 
@@ -730,6 +830,7 @@ export class ArtifactViewer {
     this.reducedMotion = Boolean(enabled);
     if (this.reducedMotion) {
       this.cameraAnimation = null;
+      this._requestRender();
     }
   }
 
@@ -740,6 +841,7 @@ export class ArtifactViewer {
       this.controls.target.copy(target);
       this.controls.update();
       this._notifyCameraChange();
+      this._requestRender();
       return;
     }
 
@@ -751,6 +853,7 @@ export class ArtifactViewer {
       duration,
       elapsed: 0
     };
+    this._requestRender();
   }
 
   applyCameraPose(pose, options = {}) {
@@ -775,6 +878,7 @@ export class ArtifactViewer {
     this.controls.target.set(target[0], target[1], target[2]);
     this.controls.update();
     this.cameraEventMuted = false;
+    this._requestRender();
     if (emitCameraChange) {
       this._notifyCameraChange();
     }
@@ -795,6 +899,18 @@ export class ArtifactViewer {
     };
   }
 
+  getRenderDiagnostics() {
+    return {
+      throttleEnabled: Boolean(this.renderer && this.renderThrottleEnabled),
+      mode: this._getRenderMode(),
+      renderedFrames: this.renderStats.renderedFrames,
+      skippedFrames: this.renderStats.skippedFrames,
+      idleFrames: this.renderStats.idleFrames,
+      idleAfterMs: this.idleAfterMs,
+      idleFrameIntervalMs: this.idleFrameIntervalMs
+    };
+  }
+
   resize(width, height) {
     const safeWidth = Math.max(1, width);
     const safeHeight = Math.max(1, height);
@@ -805,11 +921,12 @@ export class ArtifactViewer {
     }
     this.renderer.setSize(safeWidth, safeHeight, false);
     this.renderer.setPixelRatio(this._getTargetPixelRatio());
+    this._requestRender();
   }
 
   _updateCameraAnimation(delta) {
     if (!this.cameraAnimation) {
-      return;
+      return false;
     }
 
     this.cameraAnimation.elapsed += delta * 1000;
@@ -824,6 +941,7 @@ export class ArtifactViewer {
       this.cameraAnimation = null;
       this._notifyCameraChange();
     }
+    return true;
   }
 
   _updateHotspotPositions() {
@@ -883,20 +1001,50 @@ export class ArtifactViewer {
       if (!this.running) {
         return;
       }
-      const delta = this.clock.getDelta();
-
-      this._updateCameraAnimation(delta);
-      this.controls.update();
-      this._updateHotspotPositions();
-      if (!this.renderer) {
+      const now = this._now();
+      const mode = this._getRenderMode();
+      const minIntervalMs = mode === "idle" ? this.idleFrameIntervalMs : this.activeFrameIntervalMs;
+      if (!this.forceNextFrame && this.lastTickAt > 0 && now - this.lastTickAt < minIntervalMs) {
+        this.renderStats.skippedFrames += 1;
+        this.rafId = requestAnimationFrame(tick);
         return;
       }
-      this.renderer.render(this.scene, this.camera);
+      this.lastTickAt = now;
+      this.forceNextFrame = false;
 
+      const delta = this.clock.getDelta();
+      const cameraAnimated = this._updateCameraAnimation(delta);
+
+      let controlsChanged = false;
+      const shouldSettleControls = this.renderer && (this.controlsInteracting || now <= this.controlsSettlingUntil);
+      if (!cameraAnimated && shouldSettleControls) {
+        controlsChanged = this.controls.update() === true;
+      }
+      if (controlsChanged) {
+        this.lastActivityAt = now;
+        this.controlsSettlingUntil = now + CONTROLS_SETTLE_WINDOW_MS;
+      }
+
+      const shouldRenderFrame = Boolean(this.needsRender || cameraAnimated || controlsChanged);
+      if (shouldRenderFrame) {
+        this._updateHotspotPositions();
+        if (this.renderer) {
+          this.renderer.render(this.scene, this.camera);
+        }
+        this.needsRender = false;
+        this.renderStats.renderedFrames += 1;
+        if (mode === "idle") {
+          this.renderStats.idleFrames += 1;
+        }
+      }
+
+      this._emitRenderModeIfChanged();
       this.rafId = requestAnimationFrame(tick);
     };
 
     this.running = true;
+    this._requestRender();
+    this._emitRenderModeIfChanged();
     tick();
   }
 }
