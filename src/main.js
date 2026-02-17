@@ -330,6 +330,7 @@ const state = {
   serverMetrics: {},
   serverMetricDeltas: {},
   lastServerMetricsSnapshot: null,
+  serverMetricsLastSuccessAt: null,
   serverMetricsHistory: [],
   serverMetricsPollFailures: 0,
   serverMetricsPollDelayMs: SERVER_METRICS_REFRESH_INTERVAL_MS,
@@ -1470,6 +1471,7 @@ async function refreshServerMetrics(options = {}) {
     state.serverMetricDeltas = previousSnapshot ? computeServerMetricDeltas(previousSnapshot, nextMetrics) : {};
     const nextSnapshot = cloneServerMetricsSnapshot(nextMetrics);
     state.lastServerMetricsSnapshot = nextSnapshot;
+    state.serverMetricsLastSuccessAt = Date.now();
     recordServerMetricsHistory(nextSnapshot);
     state.serverMetrics = nextMetrics;
     if (state.serverMetricsPollFailures > 0) {
@@ -3455,6 +3457,7 @@ function renderInsightsPanel() {
           : "Pending";
   const pollDelayLabel = `${Math.round(Math.max(0, Number(state.serverMetricsPollDelayMs) || 0) / 1000)}s`;
   const pollFailuresLabel = `${Math.max(0, Number(state.serverMetricsPollFailures) || 0)}`;
+  const metricsFreshnessNotice = formatServerMetricsFreshnessNotice();
   const recentErrors = state.clientErrorLog.slice(-5).reverse();
   const errorsMarkup = recentErrors.length
     ? `<ol class="diagnostics-errors">
@@ -3480,6 +3483,7 @@ function renderInsightsPanel() {
       <button class="chip-btn" type="button" data-action="copy-diagnostics">Copy diagnostics</button>
       ${state.clientErrorLog.length ? '<button class="chip-btn" type="button" data-action="clear-errors">Clear</button>' : ""}
     </div>
+    ${metricsFreshnessNotice ? `<p class="insights-warning" role="status">${escapeHtml(metricsFreshnessNotice)}</p>` : ""}
     <div class="insights-grid">
       ${metricItems
         .map(
@@ -3539,6 +3543,36 @@ function renderInsightsPanel() {
   `;
 }
 
+function formatServerMetricsFreshnessNotice() {
+  const failures = Math.max(0, Number(state.serverMetricsPollFailures) || 0);
+  if (failures <= 0) {
+    return "";
+  }
+
+  const lastSuccessAt = Number(state.serverMetricsLastSuccessAt) || 0;
+  const staleForMs = lastSuccessAt > 0 ? Math.max(0, Date.now() - lastSuccessAt) : null;
+  const staleLabel = staleForMs === null ? "unknown duration" : formatDurationCompact(staleForMs);
+  const retryDelay = Math.round(Math.max(0, Number(state.serverMetricsPollDelayMs) || 0) / 1000);
+
+  return `Server metrics are stale (${failures} failed polls, stale for ${staleLabel}). Next retry in ~${retryDelay}s.`;
+}
+
+function formatDurationCompact(durationMs) {
+  const safeMs = Math.max(0, Number(durationMs) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  if (minutes < 60) {
+    return `${minutes}m ${seconds}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return `${hours}h ${remMinutes}m`;
+}
+
 function formatInsightsExportText(artifactId) {
   if (!artifactId) {
     return "";
@@ -3553,6 +3587,10 @@ function formatInsightsExportText(artifactId) {
   lines.push(`Generated: ${new Date().toLocaleString()}`);
   lines.push(`Artifact: ${artifact?.title ?? artifactId} (${artifactId})`);
   lines.push(`Metrics source: ${source}`);
+  const freshnessWarning = formatServerMetricsFreshnessNotice();
+  if (freshnessWarning) {
+    lines.push(`Metrics freshness: ${freshnessWarning}`);
+  }
   lines.push("");
 
   INSIGHTS_METRIC_DEFINITIONS.forEach((definition) => {

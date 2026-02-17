@@ -248,6 +248,17 @@ mark.search-highlight {
   font-size: 0.76rem;
 }
 
+.insights-warning {
+  margin: 0.54rem 0 0.4rem;
+  border: 1px solid rgba(184, 106, 59, 0.38);
+  background: rgba(255, 247, 236, 0.92);
+  color: #5f3f2b;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  padding: 0.4rem 0.5rem;
+}
+
 .insights-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
