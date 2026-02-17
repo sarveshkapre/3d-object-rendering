@@ -313,3 +313,40 @@ test("cms input guards clamp long fields and drop unsafe urls", async () => {
 
   assert.ok(typeof approved.body.submission.reason === "string" && approved.body.submission.reason.length <= 320);
 });
+
+test("cms stats endpoint summarizes queue, overrides, and revisions", async () => {
+  const artifactId = "artifact-stats";
+  const overridePayload = {
+    title: "Stats Artifact",
+    hook: "Validate stats output"
+  };
+
+  const submissionCreate = await requestJson(`/api/cms/overrides/${artifactId}`, {
+    method: "PUT",
+    body: overridePayload
+  });
+  assert.equal(submissionCreate.response.status, 200);
+  const submissionId = submissionCreate.body.submission.id;
+  assert.ok(submissionId);
+
+  const statsPending = await requestJson("/api/cms/stats");
+  assert.equal(statsPending.response.status, 200);
+  assert.equal(statsPending.body.stats.byStatus.pending >= 1, true);
+  assert.equal(statsPending.body.stats.pendingByArtifact[artifactId] >= 1, true);
+
+  const approved = await requestJson(`/api/cms/submissions/${submissionId}/approve`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${ADMIN_TOKEN}`
+    },
+    body: { reason: "stats approval" }
+  });
+  assert.equal(approved.response.status, 200);
+
+  const statsApproved = await requestJson("/api/cms/stats");
+  assert.equal(statsApproved.response.status, 200);
+  assert.equal(statsApproved.body.stats.byStatus.approved >= 1, true);
+  assert.equal(statsApproved.body.stats.overridesTotal >= 1, true);
+  assert.equal(statsApproved.body.stats.revisionsTotal >= 1, true);
+  assert.equal(statsApproved.body.stats.revisionsPerArtifact[artifactId] >= 1, true);
+});
