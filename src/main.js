@@ -18,6 +18,7 @@ const VISUAL_PRESET_LABELS = {
 const MIN_IDLE_RESET_MS = 10000;
 const DEFAULT_IDLE_RESET_MS = 0;
 const SERVER_METRICS_REFRESH_INTERVAL_MS = 30000;
+const SERVER_METRICS_REFRESH_MAX_BACKOFF_MS = 5 * SERVER_METRICS_REFRESH_INTERVAL_MS;
 const SERVER_METRICS_HISTORY_LIMIT = 24;
 const CLIENT_ERROR_LOG_LIMIT = 25;
 const CLIENT_ERROR_MESSAGE_MAX = 240;
@@ -330,6 +331,8 @@ const state = {
   serverMetricDeltas: {},
   lastServerMetricsSnapshot: null,
   serverMetricsHistory: [],
+  serverMetricsPollFailures: 0,
+  serverMetricsPollDelayMs: SERVER_METRICS_REFRESH_INTERVAL_MS,
   recentUpdates: [],
   cmsOverrides: {},
   curatorOpen: false,
@@ -1469,16 +1472,63 @@ async function refreshServerMetrics(options = {}) {
     state.lastServerMetricsSnapshot = nextSnapshot;
     recordServerMetricsHistory(nextSnapshot);
     state.serverMetrics = nextMetrics;
+    if (state.serverMetricsPollFailures > 0) {
+      trackEvent("server_metrics_poll_recovered", {
+        failures: state.serverMetricsPollFailures
+      });
+    }
+    state.serverMetricsPollFailures = 0;
+    state.serverMetricsPollDelayMs = SERVER_METRICS_REFRESH_INTERVAL_MS;
     if (state.currentArtifactId) {
       renderInsightsPanel();
     }
     return true;
   } catch (error) {
+    state.serverMetricsPollFailures += 1;
+    state.serverMetricsPollDelayMs = getServerMetricsPollDelayMs(state.serverMetricsPollFailures);
     if (!options.silent) {
       console.warn("Failed to refresh server metrics", error);
     }
+    if (state.serverMetricsPollFailures === 1 || state.serverMetricsPollFailures % 3 === 0) {
+      trackEvent("server_metrics_poll_failed", {
+        failures: state.serverMetricsPollFailures
+      });
+    }
     return false;
   }
+}
+
+function getServerMetricsPollDelayMs(failures) {
+  const safeFailures = Math.max(0, Number(failures) || 0);
+  const baseDelay = SERVER_METRICS_REFRESH_INTERVAL_MS;
+  const maxDelay = Math.max(baseDelay, SERVER_METRICS_REFRESH_MAX_BACKOFF_MS);
+  if (!safeFailures) {
+    return baseDelay;
+  }
+  return Math.min(maxDelay, baseDelay * 2 ** safeFailures);
+}
+
+function scheduleNextServerMetricsPoll() {
+  if (!Number.isFinite(SERVER_METRICS_REFRESH_INTERVAL_MS) || SERVER_METRICS_REFRESH_INTERVAL_MS <= 0) {
+    return;
+  }
+
+  if (serverMetricsPollTimer) {
+    window.clearTimeout(serverMetricsPollTimer);
+    serverMetricsPollTimer = null;
+  }
+
+  const delayMs =
+    Number.isFinite(state.serverMetricsPollDelayMs) && state.serverMetricsPollDelayMs > 0
+      ? state.serverMetricsPollDelayMs
+      : SERVER_METRICS_REFRESH_INTERVAL_MS;
+
+  serverMetricsPollTimer = window.setTimeout(async () => {
+    if (document.visibilityState !== "hidden") {
+      await refreshServerMetrics({ silent: true });
+    }
+    scheduleNextServerMetricsPoll();
+  }, delayMs);
 }
 
 function startServerMetricsPolling() {
@@ -1487,20 +1537,15 @@ function startServerMetricsPolling() {
   }
 
   stopServerMetricsPolling();
-
-  serverMetricsPollTimer = window.setInterval(() => {
-    if (document.visibilityState === "hidden") {
-      return;
-    }
-    void refreshServerMetrics({ silent: true });
-  }, SERVER_METRICS_REFRESH_INTERVAL_MS);
+  state.serverMetricsPollDelayMs = SERVER_METRICS_REFRESH_INTERVAL_MS;
+  scheduleNextServerMetricsPoll();
 }
 
 function stopServerMetricsPolling() {
   if (!serverMetricsPollTimer) {
     return;
   }
-  window.clearInterval(serverMetricsPollTimer);
+  window.clearTimeout(serverMetricsPollTimer);
   serverMetricsPollTimer = null;
 }
 
@@ -3408,6 +3453,8 @@ function renderInsightsPanel() {
         : state.compareReady
           ? "OK"
           : "Pending";
+  const pollDelayLabel = `${Math.round(Math.max(0, Number(state.serverMetricsPollDelayMs) || 0) / 1000)}s`;
+  const pollFailuresLabel = `${Math.max(0, Number(state.serverMetricsPollFailures) || 0)}`;
   const recentErrors = state.clientErrorLog.slice(-5).reverse();
   const errorsMarkup = recentErrors.length
     ? `<ol class="diagnostics-errors">
@@ -3480,6 +3527,8 @@ function renderInsightsPanel() {
           <p class="diagnostics-item"><span>Frames (R/S)</span><strong>${escapeHtml(frameStatsLabel)}</strong></p>
           <p class="diagnostics-item"><span>Primary Load</span><strong>${escapeHtml(primaryLoadLabel)}</strong></p>
           <p class="diagnostics-item"><span>Compare Load</span><strong>${escapeHtml(compareLoadLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Poll Delay</span><strong>${escapeHtml(pollDelayLabel)}</strong></p>
+          <p class="diagnostics-item"><span>Poll Failures</span><strong>${escapeHtml(pollFailuresLabel)}</strong></p>
           <p class="diagnostics-item"><span>Reduced Motion</span><strong>${escapeHtml(state.prefersReducedMotion ? "On" : "Off")}</strong></p>
           <p class="diagnostics-item"><span>Errors</span><strong>${state.clientErrorLog.length}</strong></p>
         </div>
@@ -3561,6 +3610,8 @@ function formatDiagnosticsExportText(artifactId) {
       !state.compareEnabled ? "n/a" : state.compareLoadError ? "error" : state.compareLoading ? "loading" : state.compareReady ? "ok" : "pending"
     }`
   );
+  lines.push(`Server metrics poll delay: ${Math.round(Math.max(0, Number(state.serverMetricsPollDelayMs) || 0) / 1000)}s`);
+  lines.push(`Server metrics consecutive poll failures: ${Math.max(0, Number(state.serverMetricsPollFailures) || 0)}`);
   lines.push(`Client errors captured: ${state.clientErrorLog.length}`);
   lines.push("");
 
