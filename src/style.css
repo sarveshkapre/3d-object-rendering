@@ -727,6 +727,32 @@ mark.search-highlight {
   box-shadow: inset 0 0 0 1px rgba(184, 106, 59, 0.22);
 }
 
+.network-badge {
+  align-self: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 0.45rem 0.68rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #fff;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.network-badge.is-online {
+  border-color: rgba(61, 134, 90, 0.35);
+  color: #2f6b49;
+  background: rgba(237, 251, 242, 0.92);
+}
+
+.network-badge.is-offline {
+  border-color: rgba(181, 70, 56, 0.34);
+  color: #8a3a30;
+  background: rgba(255, 239, 236, 0.95);
+}
+
 .renderer-status-btn {
   border-color: rgba(181, 64, 51, 0.5);
   background: rgba(181, 64, 51, 0.12);

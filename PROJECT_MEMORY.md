@@ -12,6 +12,9 @@
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
+- 2026-02-17 | Add `/api/cms/stats` and surface queue health directly in moderation overlay | Moderation operators need queue/revision pressure at a glance without downloading large payloads or scanning lists manually | `npm test`, `npm run build` | pending | high | trusted
+- 2026-02-17 | Add adaptive server-metrics poll backoff + freshness warnings | Real-time dashboards should reduce noisy retries during outages and clearly indicate stale metrics to avoid false confidence | `npm run build`, `npm test`, `npm run smoke:api`, `npm run smoke:preview:full` | pending | high | trusted
+- 2026-02-17 | Add PWA foundation (manifest, service worker registration/cache, install/offline indicators) | Current web UX baselines prioritize app-like reliability and resilient offline behavior for repeated use cases and kiosk surfaces | MDN PWA install criteria, MDN Service Worker API, web.dev INP guidance (external scan) + local verifications below | pending | medium | untrusted
 - 2026-02-11 | Add adaptive render throttling to `ArtifactViewer` so idle sessions reduce frame work | Artifact Viewer runs in kiosk loops where persistent full-rate rendering increases heat/power use without user benefit | `npm test`, `npm run build`, `npm run smoke:kiosk`, GitHub Actions run `21894489306` | 8e71063 | high | trusted
 - 2026-02-11 | Surface render-loop mode/throttle/frame counters in diagnostics and export output | Operators need to confirm whether throttling is active without devtools, and smoke automation should guard these diagnostics from regressions | `npm run smoke:kiosk`, `npm run smoke:preview:full`, `README.md` updates | 8e71063 | high | trusted
 - 2026-02-11 | Keep this cycle focused on render stability/performance over new surface-area features after bounded market scan | Market baseline emphasizes robust annotations/story/share/AR flows; reliable long-session responsiveness is a better near-term ROI than adding breadth | Sources in `CLONE_FEATURES.md` insights (`sketchfab`, `smithsonian voyager`, `modelviewer.dev`, `MDN Page Visibility`) | 8e71063 | medium | untrusted
@@ -63,6 +66,10 @@
 
 ## Verification Evidence
 - Template: YYYY-MM-DD | Command | Key output | Status (pass/fail)
+- 2026-02-17 | `npm test` | `pass 8` | pass
+- 2026-02-17 | `npm run build` | `assets:check ok`, `vite build ok` | pass
+- 2026-02-17 | `npm run smoke:api` | health + ingest + counters ok | pass
+- 2026-02-17 | `npm run smoke:preview:full` | `preview / ok`, `preview /api/health ok` | pass
 - 2026-02-11 | `gh issue list --limit 50 --state open --json number,title,author,labels,updatedAt` | `[]` (no open issues from owner/bots) | pass
 - 2026-02-11 | `gh run list --limit 10 --json databaseId,headBranch,headSha,name,status,conclusion,event,createdAt,updatedAt` | recent runs all success before cycle start | pass
 - 2026-02-11 | `npm test` | `pass 7` | pass

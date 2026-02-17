@@ -18,16 +18,20 @@
 - M5 Stabilization And Release Readiness
 
 ## Current Milestone
-- M1 Foundation
+- M5 Stabilization And Release Readiness
 
 ## Brainstorming Queue
 - Keep a broad queue of aligned candidates across features, bugs, refactor, UI/UX, docs, and test hardening.
 
 ## Pending Features
-- Keep this section updated every cycle.
+- Add API store schema versioning + migration helper for long-lived kiosk installs.
+- Add analytics ingest request-size/rate guardrails with explicit 429 handling strategy.
+- Add optional QR share panel for kiosk handoff flows (no auth required).
 
 ## Delivered Features
-- Keep dated entries with evidence links/commands.
+- 2026-02-17: Added `/api/cms/stats` queue/revision summary endpoint and moderation overlay stats tiles.
+- 2026-02-17: Added adaptive server-metrics polling backoff + freshness diagnostics in insights/export.
+- 2026-02-17: Added PWA manifest, icons, service worker cache layer, SW registration/update notices, and online/offline + install controls.
 
 ## Risks And Blockers
 - Track blockers and mitigation plans.

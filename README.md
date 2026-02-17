@@ -9,6 +9,8 @@ Minimalist white-space 3D artifact experience with:
 - Kiosk-ready showcase mode that auto-plays tours and rotates artifacts
 - Optional idle reset (append `?idle=120`) that snaps back to the featured artifact/preset after inactivity
 - Visual presets (`White`, `Sand`, `Sky`) for instant scene mood changes
+- Installable PWA shell (manifest + service worker) with update detection hooks
+- Toolbar network status badge + browser install prompt integration when supported
 - Low load mode toggle (reduced device pixel ratio + shadows off) for kiosk stability on constrained hardware
 - Adaptive render throttling that slows viewer frame work after idle periods to reduce kiosk thermals while preserving immediate interaction wake-up
 - Respects `prefers-reduced-motion` (UI motion reduced and camera/tour transitions shortened) for accessibility reviews
@@ -101,6 +103,7 @@ The API runs with frontend in `npm run dev`.
 - Analytics ingest: `POST /api/analytics/ingest`
 - Analytics counters: `GET /api/analytics/counters`
 - CMS overrides read: `GET /api/cms/overrides`
+- CMS moderation stats summary: `GET /api/cms/stats`
 - CMS submissions create/update: `PUT /api/cms/overrides/:artifactId` (queued, not instantly live)
 - CMS submissions create/delete request: `DELETE /api/cms/overrides/:artifactId` (queued, not instantly live)
 - CMS pending queue: `GET /api/cms/submissions?status=pending`

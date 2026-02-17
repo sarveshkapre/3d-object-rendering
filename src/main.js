@@ -262,6 +262,8 @@ const elements = {
   shortcutsCloseBtn: document.getElementById("shortcutsCloseBtn"),
   fullscreenBtn: document.getElementById("fullscreenBtn"),
   snapshotBtn: document.getElementById("snapshotBtn"),
+  installBtn: document.getElementById("installBtn"),
+  networkBadge: document.getElementById("networkBadge"),
   shareBtn: document.getElementById("shareBtn"),
   listToggleBtn: document.getElementById("listToggleBtn"),
   storyToggleBtn: document.getElementById("storyToggleBtn"),
@@ -372,6 +374,8 @@ const state = {
   idleResetEnabled: idleResetTimeoutMs >= MIN_IDLE_RESET_MS,
   idleResetTimer: null,
   idleResetLastActiveAt: Date.now(),
+  networkOnline: typeof navigator === "undefined" ? true : navigator.onLine,
+  deferredInstallPrompt: null,
   idleResetActive: false,
   idleResetListenersBound: false
 };
@@ -637,6 +641,8 @@ function initialize() {
   setDetailView(state.activeDetailView, { skipUrlUpdate: true });
   setCompareModeUI(state.compareEnabled);
   registerServiceWorker();
+  updateNetworkBadge();
+  updateInstallButton();
 
   const fallbackArtifactId = artifacts[0].id;
   const artifactId = artifactMap.has(state.pendingState.artifactId)
@@ -689,6 +695,55 @@ function registerServiceWorker() {
         });
       });
   });
+}
+
+function updateNetworkBadge() {
+  const badge = elements.networkBadge;
+  if (!(badge instanceof HTMLElement)) {
+    return;
+  }
+
+  const online = Boolean(state.networkOnline);
+  badge.textContent = online ? "Online" : "Offline";
+  badge.classList.toggle("is-online", online);
+  badge.classList.toggle("is-offline", !online);
+}
+
+function updateInstallButton() {
+  const button = elements.installBtn;
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const installSupported = Boolean(state.deferredInstallPrompt && typeof state.deferredInstallPrompt.prompt === "function");
+  button.hidden = !installSupported;
+  button.disabled = !installSupported;
+}
+
+async function promptInstallApp() {
+  const promptEvent = state.deferredInstallPrompt;
+  if (!promptEvent || typeof promptEvent.prompt !== "function") {
+    showToast("Install unavailable on this browser");
+    return;
+  }
+
+  try {
+    await promptEvent.prompt();
+    const outcome = await promptEvent.userChoice;
+    trackEvent("pwa_install_prompt_result", {
+      outcome: outcome?.outcome ?? "unknown"
+    });
+  } catch (error) {
+    recordClientError("install_prompt_failed", formatThrownValue(error), {
+      artifactId: state.currentArtifactId
+    });
+    trackEvent("pwa_install_prompt_result", {
+      outcome: "error"
+    });
+  } finally {
+    state.deferredInstallPrompt = null;
+    updateInstallButton();
+  }
 }
 
 function registerClientErrorTelemetry() {
@@ -799,6 +854,36 @@ async function bootstrap(artifactId) {
 function bindEvents() {
   window.addEventListener("resize", handleResize);
   document.addEventListener("keydown", handleKeydown);
+
+  window.addEventListener("online", () => {
+    state.networkOnline = true;
+    updateNetworkBadge();
+    showToast("Back online");
+    trackEvent("network_status_changed", { online: true });
+  });
+
+  window.addEventListener("offline", () => {
+    state.networkOnline = false;
+    updateNetworkBadge();
+    showToast("Offline mode");
+    trackEvent("network_status_changed", { online: false });
+  });
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    updateInstallButton();
+    trackEvent("pwa_install_prompt_ready", {
+      platform: detectShortcutPlatform()
+    });
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.deferredInstallPrompt = null;
+    updateInstallButton();
+    showToast("Artifact Viewer installed");
+    trackEvent("pwa_installed", {});
+  });
 
   elements.webglRecoveryCloseBtn.addEventListener("click", () => {
     setWebglRecoveryOpen(false, { source: "ui" });
@@ -1192,6 +1277,10 @@ function bindEvents() {
 
   elements.snapshotBtn.addEventListener("click", () => {
     void captureSnapshot({ source: "ui" });
+  });
+
+  elements.installBtn.addEventListener("click", () => {
+    void promptInstallApp();
   });
 
   elements.shareBtn.addEventListener("click", () => {
