@@ -62,6 +62,11 @@ npm run smoke:kiosk # optional (requires Google Chrome installed)
 npm run build && npm run preview:full # optional (serves dist/ with /api proxied to the local API)
 ```
 
+## CI Runner
+
+- GitHub Actions CI is configured for `self-hosted` runners.
+- Setup and registration steps: `SELF_HOSTED_RUNNER.md`
+
 ## Notes
 
 - Models are loaded locally from `public/models`.

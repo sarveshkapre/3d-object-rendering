@@ -12,6 +12,8 @@
 
 ## Recent Decisions
 - Template: YYYY-MM-DD | Decision | Why | Evidence (tests/logs) | Commit | Confidence (high/medium/low) | Trust (trusted/untrusted)
+- 2026-02-17 | Move GitHub Actions CI to `self-hosted` runner and remove matrix drift for deterministic node runtime | Billing-blocked hosted minutes should not block CI; single runtime reduces runner variance and speeds diagnosis on owned infrastructure | Local runner command parity: `npm ci`, `npm test`, `npm run smoke:api`, `npm run build` | pending | high | trusted
+- 2026-02-17 | Add self-hosted runner setup documentation with OS/tool prerequisites and registration/service steps | Operator handoff must be explicit so CI can be reproduced without GitHub-hosted runners | `SELF_HOSTED_RUNNER.md`, `README.md` CI Runner section | pending | high | trusted
 - 2026-02-17 | Add `/api/cms/stats` and surface queue health directly in moderation overlay | Moderation operators need queue/revision pressure at a glance without downloading large payloads or scanning lists manually | `npm test`, `npm run build` | pending | high | trusted
 - 2026-02-17 | Add adaptive server-metrics poll backoff + freshness warnings | Real-time dashboards should reduce noisy retries during outages and clearly indicate stale metrics to avoid false confidence | `npm run build`, `npm test`, `npm run smoke:api`, `npm run smoke:preview:full` | pending | high | trusted
 - 2026-02-17 | Add PWA foundation (manifest, service worker registration/cache, install/offline indicators) | Current web UX baselines prioritize app-like reliability and resilient offline behavior for repeated use cases and kiosk surfaces | MDN PWA install criteria, MDN Service Worker API, web.dev INP guidance (external scan) + local verifications below | pending | medium | untrusted
@@ -66,6 +68,10 @@
 
 ## Verification Evidence
 - Template: YYYY-MM-DD | Command | Key output | Status (pass/fail)
+- 2026-02-17 | `npm ci` | `added 41 packages ... found 0 vulnerabilities` | pass
+- 2026-02-17 | `npm test` | `pass 8` | pass
+- 2026-02-17 | `npm run smoke:api` | health + ingest + counters ok | pass
+- 2026-02-17 | `npm run build` | `assets:check ok`, `vite build ok` | pass
 - 2026-02-17 | `npm test` | `pass 8` | pass
 - 2026-02-17 | `npm run build` | `assets:check ok`, `vite build ok` | pass
 - 2026-02-17 | `npm run smoke:api` | health + ingest + counters ok | pass
