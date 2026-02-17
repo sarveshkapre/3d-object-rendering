@@ -244,6 +244,7 @@ const elements = {
   moderationCloseBtn: document.getElementById("moderationCloseBtn"),
   moderationTokenInput: document.getElementById("moderationTokenInput"),
   moderationReasonInput: document.getElementById("moderationReasonInput"),
+  moderationStats: document.getElementById("moderationStats"),
   moderationArtifactSelect: document.getElementById("moderationArtifactSelect"),
   moderationRefreshBtn: document.getElementById("moderationRefreshBtn"),
   moderationPendingList: document.getElementById("moderationPendingList"),
@@ -339,6 +340,7 @@ const state = {
   moderationToken: "",
   moderationReason: "",
   moderationArtifactId: null,
+  moderationStats: null,
   moderationSubmissions: [],
   moderationSelectedSubmissionId: null,
   moderationRecentDecisions: [],
@@ -1967,9 +1969,10 @@ function getModerationHeaders() {
 }
 
 async function loadModerationData() {
-  const [pendingResult, allResult] = await Promise.allSettled([
+  const [pendingResult, allResult, statsResult] = await Promise.allSettled([
     fetch("/api/cms/submissions?status=pending&include=override"),
-    fetch("/api/cms/submissions?status=all")
+    fetch("/api/cms/submissions?status=all"),
+    fetch("/api/cms/stats")
   ]);
 
   if (pendingResult.status !== "fulfilled" || !pendingResult.value.ok) {
@@ -1997,11 +2000,51 @@ async function loadModerationData() {
     state.moderationRecentDecisions = [];
   }
 
+  if (statsResult.status === "fulfilled" && statsResult.value.ok) {
+    const statsPayload = await statsResult.value.json();
+    state.moderationStats = statsPayload.stats && typeof statsPayload.stats === "object" ? statsPayload.stats : null;
+  } else {
+    state.moderationStats = null;
+  }
+
+  renderModerationStats();
   renderModerationPendingList();
   renderModerationDiffPanel();
   renderModerationDecisionsList();
   await loadModerationRevisions(state.moderationArtifactId, { silent: true });
   setModerationStatus("Queue loaded.", "neutral");
+}
+
+function renderModerationStats() {
+  if (!(elements.moderationStats instanceof HTMLElement)) {
+    return;
+  }
+
+  const stats = state.moderationStats;
+  if (!stats || typeof stats !== "object") {
+    elements.moderationStats.innerHTML = '<p class="insights-empty">Stats unavailable.</p>';
+    return;
+  }
+
+  const items = [
+    { label: "Pending", value: Number(stats?.byStatus?.pending || 0) },
+    { label: "Approved", value: Number(stats?.byStatus?.approved || 0) },
+    { label: "Rejected", value: Number(stats?.byStatus?.rejected || 0) },
+    { label: "Overrides", value: Number(stats?.overridesTotal || 0) },
+    { label: "Revisions", value: Number(stats?.revisionsTotal || 0) },
+    { label: "Submissions", value: Number(stats?.submissionsTotal || 0) }
+  ];
+
+  elements.moderationStats.innerHTML = items
+    .map(
+      (item) => `
+        <div class="moderation-stat-chip">
+          <strong>${escapeHtml(item.value)}</strong>
+          <span>${escapeHtml(item.label)}</span>
+        </div>
+      `
+    )
+    .join("");
 }
 
 async function loadModerationRevisions(artifactId, options = {}) {
