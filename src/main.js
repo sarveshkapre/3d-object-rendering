@@ -37,6 +37,7 @@ let lastIdlePointerMoveTs = 0;
 let serverMetricsPollTimer = null;
 let clientErrorTelemetryBound = false;
 let reducedMotionListenerBound = false;
+let serviceWorkerBootstrapped = false;
 
 function loadLowLoadPreference() {
   try {
@@ -635,6 +636,7 @@ function initialize() {
   registerIdleResetListeners();
   setDetailView(state.activeDetailView, { skipUrlUpdate: true });
   setCompareModeUI(state.compareEnabled);
+  registerServiceWorker();
 
   const fallbackArtifactId = artifacts[0].id;
   const artifactId = artifactMap.has(state.pendingState.artifactId)
@@ -643,6 +645,50 @@ function initialize() {
 
   handleResize();
   void bootstrap(artifactId);
+}
+
+function registerServiceWorker() {
+  if (serviceWorkerBootstrapped) {
+    return;
+  }
+  serviceWorkerBootstrapped = true;
+
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        trackEvent("pwa_sw_registered", {
+          scope: registration.scope
+        });
+
+        registration.addEventListener("updatefound", () => {
+          const nextWorker = registration.installing;
+          if (!nextWorker) {
+            return;
+          }
+          nextWorker.addEventListener("statechange", () => {
+            if (nextWorker.state === "installed" && navigator.serviceWorker.controller) {
+              showToast("Update ready. Refresh to apply.");
+              trackEvent("pwa_sw_update_ready", {
+                scope: registration.scope
+              });
+            }
+          });
+        });
+      })
+      .catch((error) => {
+        recordClientError("service_worker_register_failed", formatThrownValue(error), {
+          artifactId: state.currentArtifactId
+        });
+      });
+  });
 }
 
 function registerClientErrorTelemetry() {
