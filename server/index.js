@@ -460,6 +460,45 @@ function getRecentUpdates(store, options = {}) {
     .slice(0, limit);
 }
 
+function getCmsStats(store) {
+  const submissions = Array.isArray(store?.submissions) ? store.submissions : [];
+  const revisionsByArtifact = store?.revisions && typeof store.revisions === "object" ? store.revisions : {};
+  const overrides = store?.overrides && typeof store.overrides === "object" ? store.overrides : {};
+  const byStatus = {
+    pending: 0,
+    approved: 0,
+    rejected: 0
+  };
+  const pendingByArtifact = {};
+  let revisionsTotal = 0;
+
+  for (const submission of submissions) {
+    const status = submission?.status;
+    if (status === "pending" || status === "approved" || status === "rejected") {
+      byStatus[status] += 1;
+    }
+    if (status === "pending" && typeof submission?.artifactId === "string" && submission.artifactId) {
+      pendingByArtifact[submission.artifactId] = (pendingByArtifact[submission.artifactId] || 0) + 1;
+    }
+  }
+
+  const revisionsPerArtifact = {};
+  for (const [artifactId, entries] of Object.entries(revisionsByArtifact)) {
+    const count = Array.isArray(entries) ? entries.length : 0;
+    revisionsPerArtifact[artifactId] = count;
+    revisionsTotal += count;
+  }
+
+  return {
+    submissionsTotal: submissions.length,
+    overridesTotal: Object.keys(overrides).length,
+    revisionsTotal,
+    byStatus,
+    pendingByArtifact,
+    revisionsPerArtifact
+  };
+}
+
 const server = createServer(async (req, res) => {
   const method = req.method || "GET";
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -539,6 +578,14 @@ const server = createServer(async (req, res) => {
   if (method === "GET" && url.pathname === "/api/cms/overrides") {
     const store = await getStoreSnapshot();
     json(res, 200, { overrides: store.overrides });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/cms/stats") {
+    const store = await getStoreSnapshot();
+    json(res, 200, {
+      stats: getCmsStats(store)
+    });
     return;
   }
 
